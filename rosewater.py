@@ -1,7 +1,14 @@
+"""Rosewater is a command line app for keeping track of the books"""
 import argparse
 import sys
 
 import requests
+
+# TODO: make data class for books
+# TODO: validate isbn
+# TODO: get user to confirm book fetched from open lib
+# TODO: commit to sql database
+# TODO: convert to csv
 
 parser = argparse.ArgumentParser()
 
