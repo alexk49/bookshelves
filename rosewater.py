@@ -1,5 +1,6 @@
 """Rosewater is a command line app for keeping track of the books"""
 import argparse
+import csv
 import logging
 import sys
 
@@ -37,6 +38,36 @@ class Book:
     def __str__(self):
         """Return human readable string"""
         return f"{self.title} by {self.author}, published in {self.pub_date} by {self.publisher}"
+
+    def __iter__(self):
+        return iter(
+            [
+                self.title,
+                self.author,
+                self.isbn,
+                self.num_of_pages,
+                self.pub_date,
+                self.publisher,
+                self.open_lib_work_key,
+            ]
+        )
+
+    def write_to_csv(self):
+        output_filename = self.isbn + ".csv"
+        with open(output_filename, "w") as output:
+            writer = csv.writer(output)
+            writer.writerow(
+                [
+                    "title",
+                    "author",
+                    "isbn",
+                    "number-of-pages",
+                    "publication-date",
+                    "publisher",
+                    "open-lib-key",
+                ]
+            )
+            writer.writerow(self)
 
 
 def open_lib_search(isbn):
@@ -135,6 +166,9 @@ def main():
             book = Book(book_metadata)
 
             logging.info(book)
+
+            logging.info("Writing %s to csv", book.isbn)
+            book.write_to_csv()
 
         else:
             logging.info("Something else")
