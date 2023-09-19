@@ -2,6 +2,8 @@
 import argparse
 import csv
 import logging
+import os
+import sqlite3
 import sys
 
 import requests
@@ -10,17 +12,66 @@ logging.basicConfig(
     level=logging.DEBUG, format=" %(asctime)s -  %(levelname)s -  %(message)s"
 )
 
-# TODO: validate isbn
-# TODO: get user to confirm book fetched from open lib
-# TODO: commit to sql database
-# TODO: convert to csv
+DATA_FOLDER = "data"
+
+PATH_TO_DATABASE = os.path.join(DATA_FOLDER, "bookshelf.db")
 
 parser = argparse.ArgumentParser()
 
 parser.add_argument("-a", "--add", help="Add to database")
 
 
+class BookShelf:
+    """Class for collection of books"""
+
+    def __init__(self, path_to_database):
+        if os.path.exists(path_to_database):
+            database = path_to_database
+        else:
+            database = self.createNewDatabase(path_to_database)
+        self.db = database
+
+    @classmethod
+    def createNewDatabase(cls, path_to_database):
+        connection = sqlite3.connect(path_to_database)
+        cursor = connection.cursor()
+        cursor.execute(
+            "CREATE TABLE bookshelf(title, author, isbn, num_of_pages, pub_date, publisher, open_lib_work_key)"
+        )
+        connection.close()
+        return path_to_database
+
+    def getConnection(self):
+        """In order to execute commands you have to create a connection
+        and then a database cursor"""
+        connection = sqlite3.connect(self.db)
+        cursor = connection.cursor()
+        return connection, cursor
+
+    def closeDB(self, connection):
+        connection.close()
+
+    def addToDatabase(self, Book):
+        connection, cursor = self.getConnection()
+        cursor.execute(
+            """INSERT into "bookshelf" (title, author, isbn, num_of_pages, pub_date, publisher, open_lib_work_key) VALUES (?, ?, ?, ?, ?, ?, ?)""",
+            (
+                Book.title,
+                Book.author,
+                Book.isbn,
+                Book.num_of_pages,
+                Book.pub_date,
+                Book.publisher,
+                Book.open_lib_work_key,
+            ),
+        )
+        connection.commit()
+        self.closeDB(connection)
+
+
 class Book:
+    """Class for individual book entries"""
+
     def __init__(self, book_metadata):
         """Create new book object from book metadata"""
         self.title = book_metadata[0]["title"]
@@ -54,7 +105,8 @@ class Book:
 
     def write_to_csv(self):
         output_filename = self.isbn + ".csv"
-        with open(output_filename, "w") as output:
+        output_filepath = os.path.join(DATA_FOLDER, output_filename)
+        with open(output_filepath, "w") as output:
             writer = csv.writer(output)
             writer.writerow(
                 [
@@ -169,6 +221,12 @@ def main():
 
             logging.info("Writing %s to csv", book.isbn)
             book.write_to_csv()
+
+            logging.info("Establishing Bookshelf class")
+            bookshelf = BookShelf(PATH_TO_DATABASE)
+
+            logging.info("Writing %s to bookshelf", book.isbn)
+            bookshelf.addToDatabase(book)
 
         else:
             logging.info("Something else")
