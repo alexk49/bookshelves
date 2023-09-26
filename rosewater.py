@@ -6,7 +6,7 @@ import logging
 import os
 import sqlite3
 import sys
-from typing import Type
+from typing import Type, List, Dict
 
 import requests
 
@@ -27,89 +27,10 @@ parser.add_argument(
 )
 
 
-class BookShelf:
-    """Class for collection of books"""
-
-    def __init__(self, path_to_database: str) -> None:
-        if os.path.exists(path_to_database):
-            database = path_to_database
-        else:
-            database = self.createNewDatabase(path_to_database)
-        self.db = database
-
-    @classmethod
-    def createNewDatabase(cls, path_to_database: str) -> str:
-        connection = sqlite3.connect(path_to_database)
-        cursor = connection.cursor()
-        cursor.execute(
-            "CREATE TABLE bookshelf(title, author, isbn, num_of_pages, pub_date, publisher, open_lib_work_key)"
-        )
-        connection.close()
-        return path_to_database
-
-    def getConnection(self):
-        """In order to execute commands you have to create a connection
-        and then a database cursor"""
-        connection = sqlite3.connect(self.db)
-        connection.row_factory = sqlite3.Row
-        cursor = connection.cursor()
-        return connection, cursor
-
-    def closeDB(self, connection):
-        connection.close()
-
-    def addToDatabase(self, Book):
-        connection, cursor = self.getConnection()
-        cursor.execute(
-            """INSERT into "bookshelf" (title, author, isbn, num_of_pages, pub_date, publisher, open_lib_work_key) VALUES (?, ?, ?, ?, ?, ?, ?)""",
-            (
-                Book.title,
-                Book.author,
-                Book.isbn,
-                Book.num_of_pages,
-                Book.pub_date,
-                Book.publisher,
-                Book.open_lib_work_key,
-            ),
-        )
-        connection.commit()
-        self.closeDB(connection)
-
-    def exportToCSV(self, PATH_TO_CSV: str):
-        connection, cursor = self.getConnection()
-        bookshelf = cursor.execute("""SELECT * from bookshelf""")
-
-        logging.debug(bookshelf)
-        logging.debug(type(bookshelf))
-
-        datestamp = datetime.today().strftime("%Y%m%d")
-
-        output_filename = "bookshelf-" + datestamp + ".csv"
-        output_filepath = os.path.join(DATA_FOLDER, output_filename)
-
-        with open(output_filepath, "w") as output:
-            writer = csv.writer(output)
-            writer.writerow(
-                [
-                    "title",
-                    "author",
-                    "isbn",
-                    "number-of-pages",
-                    "publication-date",
-                    "publisher",
-                    "open-lib-key",
-                ]
-            )
-            for book in bookshelf:
-                writer.writerow(book)
-
-        self.closeDB(connection)
-
-
 class Book:
     """Class for individual book entries"""
 
-    def __init__(self, book_metadata):
+    def __init__(self, book_metadata: List[Dict[str, str]]):
         """Create new book object from book metadata"""
         self.title = book_metadata[0]["title"]
         self.author = book_metadata[0]["author"]
@@ -159,7 +80,88 @@ class Book:
             writer.writerow(self)
 
 
-def open_lib_search(isbn):
+class BookShelf:
+    """Class for collection of books"""
+
+    def __init__(self, path_to_database: str) -> None:
+        if os.path.exists(path_to_database):
+            database = path_to_database
+        else:
+            database = self.createNewDatabase(path_to_database)
+        self.db = database
+
+    @classmethod
+    def createNewDatabase(cls, path_to_database: str) -> str:
+        connection = sqlite3.connect(path_to_database)
+        cursor = connection.cursor()
+        cursor.execute(
+            "CREATE TABLE bookshelf(title, author, isbn, num_of_pages, pub_date, publisher, open_lib_work_key)"
+        )
+        connection.close()
+        return path_to_database
+
+    def getConnection(self):
+        """In order to execute commands you have to create a connection
+        and then a database cursor"""
+        connection = sqlite3.connect(self.db)
+        connection.row_factory = sqlite3.Row
+        cursor = connection.cursor()
+        return connection, cursor
+
+    def closeDB(self, connection: Type[sqlite3.Connection]):
+        logging.debug("Connect type: ")
+        logging.debug(type(connection))
+        connection.close()
+
+    def addToDatabase(self, book: Type[Book]):
+        connection, cursor = self.getConnection()
+        cursor.execute(
+            """INSERT into "bookshelf" (title, author, isbn, num_of_pages, pub_date, publisher, open_lib_work_key) VALUES (?, ?, ?, ?, ?, ?, ?)""",
+            (
+                book.title,
+                book.author,
+                book.isbn,
+                book.num_of_pages,
+                book.pub_date,
+                book.publisher,
+                book.open_lib_work_key,
+            ),
+        )
+        connection.commit()
+        self.closeDB(connection)
+
+    def exportToCSV(self, PATH_TO_CSV: str):
+        connection, cursor = self.getConnection()
+        bookshelf = cursor.execute("""SELECT * from bookshelf""")
+
+        logging.debug(bookshelf)
+        logging.debug(type(bookshelf))
+
+        datestamp = datetime.today().strftime("%Y%m%d")
+
+        output_filename = "bookshelf-" + datestamp + ".csv"
+        output_filepath = os.path.join(DATA_FOLDER, output_filename)
+
+        with open(output_filepath, "w") as output:
+            writer = csv.writer(output)
+            writer.writerow(
+                [
+                    "title",
+                    "author",
+                    "isbn",
+                    "number-of-pages",
+                    "publication-date",
+                    "publisher",
+                    "open-lib-key",
+                ]
+            )
+            for book in bookshelf:
+                writer.writerow(book)
+
+        self.closeDB(connection)
+
+
+def open_lib_search(isbn: str) -> List[Dict[str, str]]:
     """get data using general open library search api"""
     url = "https://openlibrary.org/search.json"
 
@@ -207,9 +209,9 @@ def open_lib_search(isbn):
     return results
 
 
-def validate_isbn(isbn):
+def validate_isbn(isbn: str) -> bool:
     """Test for valid isbn"""
-    # isbn = isbn.strip(isbn)
+    isbn = isbn.strip(isbn)
     check = isbn.isdigit()
     if check:
         length = len(isbn)
