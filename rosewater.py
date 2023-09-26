@@ -49,6 +49,7 @@ class Book:
         return f"{self.title} by {self.author}, published in {self.pub_date} by {self.publisher}"
 
     def __iter__(self):
+        """Create iterable of book metadata."""
         return iter(
             [
                 self.title,
@@ -61,7 +62,8 @@ class Book:
             ]
         )
 
-    def write_to_csv(self):
+    def writeToCSV(self):
+        """Write object book to csv."""
         output_filename = self.isbn + ".csv"
         output_filepath = os.path.join(DATA_FOLDER, output_filename)
         with open(output_filepath, "w") as output:
@@ -80,10 +82,11 @@ class Book:
             writer.writerow(self)
 
 
-class BookShelf:
-    """Class for collection of books"""
+class Bookshelves:
+    """Class for database of books"""
 
     def __init__(self, path_to_database: str) -> None:
+        """Create new bookshelves database object"""
         if os.path.exists(path_to_database):
             database = path_to_database
         else:
@@ -92,6 +95,7 @@ class BookShelf:
 
     @classmethod
     def createNewDatabase(cls, path_to_database: str) -> str:
+        """Create new database file with standard rows."""
         connection = sqlite3.connect(path_to_database)
         cursor = connection.cursor()
         cursor.execute(
@@ -109,11 +113,11 @@ class BookShelf:
         return connection, cursor
 
     def closeDB(self, connection: Type[sqlite3.Connection]):
-        logging.debug("Connect type: ")
-        logging.debug(type(connection))
+        """Close existing database connection."""
         connection.close()
 
     def addToDatabase(self, book: Type[Book]):
+        """Add a book to the database."""
         connection, cursor = self.getConnection()
         cursor.execute(
             """INSERT into "bookshelf" (title, author, isbn, num_of_pages, pub_date, publisher, open_lib_work_key) VALUES (?, ?, ?, ?, ?, ?, ?)""",
@@ -131,6 +135,7 @@ class BookShelf:
         self.closeDB(connection)
 
     def exportToCSV(self, PATH_TO_CSV: str):
+        """Export database to csv file."""
         connection, cursor = self.getConnection()
         bookshelf = cursor.execute("""SELECT * from bookshelf""")
 
@@ -162,7 +167,7 @@ class BookShelf:
 
 
 def open_lib_search(isbn: str) -> List[Dict[str, str]]:
-    """get data using general open library search api"""
+    """Get book data using general open library search api."""
     url = "https://openlibrary.org/search.json"
 
     # create url query
@@ -221,7 +226,7 @@ def validate_isbn(isbn: str) -> bool:
         return False
 
 
-def check_book(book: Type[Book]):
+def confirm_book(book: Type[Book]):
     check = input(f"Is {book} the book you want to add to your bookshelf? y/n: ")
 
     if check[0].lower() == "y":
@@ -270,20 +275,20 @@ def main():
 
             logging.info(book)
 
-            check = check_book(book)
+            check = confirm_book(book)
 
             if check:
                 logging.info("Writing %s to csv", book.isbn)
-                book.write_to_csv()
+                book.writeToCSV()
 
                 logging.info("Establishing Bookshelf class")
-                bookshelf = BookShelf(PATH_TO_DATABASE)
+                bookshelf = Bookshelves(PATH_TO_DATABASE)
 
                 logging.info("Writing %s to bookshelf", book.isbn)
                 bookshelf.addToDatabase(book)
         elif args.export:
             logging.info("Establishing Bookshelf class")
-            bookshelf = BookShelf(PATH_TO_DATABASE)
+            bookshelf = Bookshelves(PATH_TO_DATABASE)
 
             bookshelf.exportToCSV(PATH_TO_CSV)
         else:
