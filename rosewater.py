@@ -1,10 +1,12 @@
 """Rosewater is a command line app for keeping track of the books"""
 import argparse
 import csv
+from datetime import datetime
 import logging
 import os
 import sqlite3
 import sys
+from typing import Type
 
 import requests
 
@@ -15,16 +17,20 @@ logging.basicConfig(
 DATA_FOLDER = "data"
 
 PATH_TO_DATABASE = os.path.join(DATA_FOLDER, "bookshelf.db")
+PATH_TO_CSV = os.path.join(DATA_FOLDER, "bookshelf.csv")
 
 parser = argparse.ArgumentParser()
 
 parser.add_argument("-a", "--add", help="Add to database")
+parser.add_argument(
+    "-e", "--export", action="store_true", help="Export database to csv"
+)
 
 
 class BookShelf:
     """Class for collection of books"""
 
-    def __init__(self, path_to_database):
+    def __init__(self, path_to_database: str) -> None:
         if os.path.exists(path_to_database):
             database = path_to_database
         else:
@@ -32,7 +38,7 @@ class BookShelf:
         self.db = database
 
     @classmethod
-    def createNewDatabase(cls, path_to_database):
+    def createNewDatabase(cls, path_to_database: str) -> str:
         connection = sqlite3.connect(path_to_database)
         cursor = connection.cursor()
         cursor.execute(
@@ -45,6 +51,7 @@ class BookShelf:
         """In order to execute commands you have to create a connection
         and then a database cursor"""
         connection = sqlite3.connect(self.db)
+        connection.row_factory = sqlite3.Row
         cursor = connection.cursor()
         return connection, cursor
 
@@ -66,6 +73,36 @@ class BookShelf:
             ),
         )
         connection.commit()
+        self.closeDB(connection)
+
+    def exportToCSV(self, PATH_TO_CSV: str):
+        connection, cursor = self.getConnection()
+        bookshelf = cursor.execute("""SELECT * from bookshelf""")
+
+        logging.debug(bookshelf)
+        logging.debug(type(bookshelf))
+
+        datestamp = datetime.today().strftime("%Y%m%d")
+
+        output_filename = "bookshelf-" + datestamp + ".csv"
+        output_filepath = os.path.join(DATA_FOLDER, output_filename)
+
+        with open(output_filepath, "w") as output:
+            writer = csv.writer(output)
+            writer.writerow(
+                [
+                    "title",
+                    "author",
+                    "isbn",
+                    "number-of-pages",
+                    "publication-date",
+                    "publisher",
+                    "open-lib-key",
+                ]
+            )
+            for book in bookshelf:
+                writer.writerow(book)
+
         self.closeDB(connection)
 
 
@@ -182,6 +219,16 @@ def validate_isbn(isbn):
         return False
 
 
+def check_book(book: Type[Book]):
+    check = input(f"Is {book} the book you want to add to your bookshelf? y/n: ")
+
+    if check[0].lower() == "y":
+        return True
+    else:
+        logging.critical("Incorrect book. Exiting program.")
+        sys.exit(1)
+
+
 def usage():
     logging.info(
         """
@@ -194,12 +241,14 @@ Usage:
 
 
 def main():
+    logging.debug(sys.argv)
     if (len(sys.argv)) == 1:
         logging.info("Invalid usage: no args passed\n")
         usage()
         sys.exit(1)
     else:
         args = parser.parse_args()
+        logging.debug(args)
         if args.add:
             isbn = args.add
 
@@ -219,15 +268,22 @@ def main():
 
             logging.info(book)
 
-            logging.info("Writing %s to csv", book.isbn)
-            book.write_to_csv()
+            check = check_book(book)
 
+            if check:
+                logging.info("Writing %s to csv", book.isbn)
+                book.write_to_csv()
+
+                logging.info("Establishing Bookshelf class")
+                bookshelf = BookShelf(PATH_TO_DATABASE)
+
+                logging.info("Writing %s to bookshelf", book.isbn)
+                bookshelf.addToDatabase(book)
+        elif args.export:
             logging.info("Establishing Bookshelf class")
             bookshelf = BookShelf(PATH_TO_DATABASE)
 
-            logging.info("Writing %s to bookshelf", book.isbn)
-            bookshelf.addToDatabase(book)
-
+            bookshelf.exportToCSV(PATH_TO_CSV)
         else:
             logging.info("Something else")
 
