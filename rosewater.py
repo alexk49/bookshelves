@@ -25,20 +25,33 @@ parser.add_argument("-a", "--add", help="Add to database")
 parser.add_argument(
     "-e", "--export", action="store_true", help="Export database to csv"
 )
+parser.add_argument("-i", "--import_csv", help="Import csv file to database")
 
 
 class Book:
     """Class for individual book entries"""
 
-    def __init__(self, book_metadata: List[Dict[str, str]]):
+    def __init__(self, book_metadata: Dict[str, str]):
         """Create new book object from book metadata"""
-        self.title = book_metadata[0]["title"]
-        self.author = book_metadata[0]["author"]
-        self.isbn = book_metadata[0]["isbn"]
-        self.num_of_pages = book_metadata[0]["num_of_pages"]
-        self.pub_date = book_metadata[0]["pub_date"]
-        self.publisher = book_metadata[0]["publisher"]
-        self.open_lib_work_key = book_metadata[0]["work_key"]
+        try:
+            # keys from csv import
+            self.title = book_metadata["title"]
+            self.author = book_metadata["author"]
+            self.isbn = book_metadata["isbn"]
+            self.num_of_pages = book_metadata["number-of-pages"]
+            self.pub_date = book_metadata["publication-date"]
+            self.publisher = book_metadata["publisher"]
+            self.open_lib_work_key = book_metadata["open-lib-key"]
+
+        except KeyError:
+            # keys from open lib import
+            self.title = book_metadata["title"]
+            self.author = book_metadata["author"]
+            self.isbn = book_metadata["isbn"]
+            self.num_of_pages = book_metadata["num_of_pages"]
+            self.pub_date = book_metadata["pub_date"]
+            self.publisher = book_metadata["publisher"]
+            self.open_lib_work_key = book_metadata["work_key"]
 
     def __repr__(self):
         """Return a string of the expression that creates the object"""
@@ -116,8 +129,9 @@ class Bookshelves:
         """Close existing database connection."""
         connection.close()
 
-    def addToDatabase(self, book: Type[Book]):
+    def addToDatabase(self, book: Book):
         """Add a book to the database."""
+        logging.info("Inserting %s into %s", book.title, PATH_TO_DATABASE)
         connection, cursor = self.getConnection()
         cursor.execute(
             """INSERT into "bookshelf" (title, author, isbn, num_of_pages, pub_date, publisher, open_lib_work_key) VALUES (?, ?, ?, ?, ?, ?, ?)""",
@@ -164,6 +178,78 @@ class Bookshelves:
                 writer.writerow(book)
 
         self.closeDB(connection)
+
+    def importFromCSV(self, import_csv_file: str):
+        """Import a csv file to bookshelves database."""
+        print(
+            """If your CSV has the following columns in order,
+then it will be directly imported into the database:
+title,
+author,
+isbn,
+number-of-pages,
+publication-date,
+publisher,
+open-lib-key
+
+Otherwise, it must include the isbn for each title and the book metadata will be fetched from the open library.
+"""
+        )
+
+        check = input("Would you like to continue? y/n: ")
+
+        if confirm_user_input(check):
+            bookshelves = Bookshelves(PATH_TO_DATABASE)
+
+            columns_list = [
+                "title",
+                "author",
+                "isbn",
+                "number-of-pages",
+                "publication-date",
+                "publisher",
+                "open-lib-key",
+            ]
+
+            with open(import_csv_file, "r") as csv_file:
+                reader = csv.DictReader(csv_file)
+
+                logging.debug("Headings: %s ", reader.fieldnames)
+                headings = reader.fieldnames
+                print(type(headings))
+
+                if reader.fieldnames == columns_list:
+                    logging.info("Importing data directly from csv file")
+
+                    books_metadata = list(reader)
+
+                    logging.debug(books_metadata)
+                    logging.debug(books_metadata[0]["title"])
+
+                    for book_metadata in books_metadata:
+                        book = Book(book_metadata)
+
+                        logging.debug(type(book))
+
+                        bookshelves.addToDatabase(book)
+
+                else:
+                    logging.info("Getting data from open library")
+
+                    for row in reader:
+                        isbn = row["isbn"]
+                        logging.debug(isbn)
+                        logging.debug(type(isbn))
+
+                        results = open_lib_search(isbn)
+
+                        book_metadata = results[0]
+                        logging.debug(book_metadata)
+
+                        book = Book(book_metadata)
+                        logging.debug(book)
+
+                        bookshelves.addToDatabase(book)
 
 
 def open_lib_search(isbn: str) -> List[Dict[str, str]]:
@@ -216,23 +302,29 @@ def open_lib_search(isbn: str) -> List[Dict[str, str]]:
 
 def validate_isbn(isbn: str) -> bool:
     """Test for valid isbn"""
-    isbn = isbn.strip(isbn)
-    check = isbn.isdigit()
-    if check:
+    logging.debug(isbn)
+    logging.debug(type(isbn))
+
+    isbn = isbn.strip()
+    if isbn.isdigit() is False:
+        logging.info("ISBN contains characters that aren't numbers")
+        return False
+    else:
         length = len(isbn)
         if length == 10 or length == 13:
             return True
-    else:
-        return False
+        else:
+            logging.info("ISBN is invalid length")
+            logging.debug(len(isbn))
+            return False
 
 
-def confirm_book(book: Type[Book]):
-    check = input(f"Is {book} the book you want to add to your bookshelf? y/n: ")
-
+def confirm_user_input(check: str):
+    """Used to check user input for yes or no."""
     if check[0].lower() == "y":
         return True
     else:
-        logging.critical("Incorrect book. Exiting program.")
+        logging.critical("Exiting program.")
         sys.exit(1)
 
 
@@ -264,18 +356,21 @@ def main():
                 sys.exit(1)
 
             logging.info("searching for %s", isbn)
-            book_metadata = open_lib_search(isbn)
+            books_metadata = open_lib_search(isbn)
 
-            if not book_metadata:
+            if not books_metadata:
                 logging.critical("No results found for %s", isbn)
 
-            logging.debug(book_metadata)
+            logging.debug(books_metadata)
 
-            book = Book(book_metadata)
+            book = Book(books_metadata[0])
 
             logging.info(book)
 
-            check = confirm_book(book)
+            check = input(
+                f"Is {book} the book you want to add to your bookshelf? y/n: "
+            )
+            check = confirm_user_input(check)
 
             if check:
                 logging.info("Writing %s to csv", book.isbn)
@@ -291,6 +386,16 @@ def main():
             bookshelf = Bookshelves(PATH_TO_DATABASE)
 
             bookshelf.exportToCSV(PATH_TO_CSV)
+        elif args.import_csv:
+            logging.debug(args.import_csv)
+            import_csv_filepath = args.import_csv
+            if os.path.exists(import_csv_filepath) is False:
+                logging.critical("CSV filepath does not exist: %s", import_csv_filepath)
+
+            bookshelves = Bookshelves(PATH_TO_DATABASE)
+
+            bookshelves.importFromCSV(import_csv_filepath)
+
         else:
             logging.info("Something else")
 
