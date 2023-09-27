@@ -32,7 +32,10 @@ class Book:
     """Class for individual book entries"""
 
     def __init__(self, book_metadata: Dict[str, str]):
-        """Create new book object from book metadata"""
+        """Create new book object from book metadata.
+        Book metadata dictionary must be created from either
+        the bookshelves class database schema
+        or imported from the open library api"""
         try:
             # keys from csv import
             self.title = book_metadata["title"]
@@ -131,7 +134,7 @@ class Bookshelves:
 
     def addToDatabase(self, book: Book):
         """Add a book to the database."""
-        logging.info("Inserting %s into %s", book.title, PATH_TO_DATABASE)
+        logging.info("Inserting %s into %s", book, PATH_TO_DATABASE)
         connection, cursor = self.getConnection()
         cursor.execute(
             """INSERT into "bookshelf" (title, author, isbn, num_of_pages, pub_date, publisher, open_lib_work_key) VALUES (?, ?, ?, ?, ?, ?, ?)""",
@@ -181,9 +184,10 @@ class Bookshelves:
 
     def importFromCSV(self, import_csv_file: str):
         """Import a csv file to bookshelves database."""
-        print(
+        check = input(
             """If your CSV has the following columns in order,
 then it will be directly imported into the database:
+
 title,
 author,
 isbn,
@@ -192,11 +196,18 @@ publication-date,
 publisher,
 open-lib-key
 
-Otherwise, it must include the isbn for each title and the book metadata will be fetched from the open library.
+Otherwise, it must have a column titled isbn.
+And an isbn listed for each title and the book metadata will be fetched from the open library.
+
+Example schema:
+
+isbn
+978-etc
+978-etc
+
+Would you like to continue? y/n: "
 """
         )
-
-        check = input("Would you like to continue? y/n: ")
 
         if confirm_user_input(check):
             bookshelves = Bookshelves(PATH_TO_DATABASE)
@@ -215,9 +226,8 @@ Otherwise, it must include the isbn for each title and the book metadata will be
                 reader = csv.DictReader(csv_file)
 
                 logging.debug("Headings: %s ", reader.fieldnames)
-                headings = reader.fieldnames
-                print(type(headings))
-
+                # if headings on csv match default database schema
+                # import directly from csv
                 if reader.fieldnames == columns_list:
                     logging.info("Importing data directly from csv file")
 
@@ -243,6 +253,9 @@ Otherwise, it must include the isbn for each title and the book metadata will be
 
                         results = open_lib_search(isbn)
 
+                        # open library returns results as list of dictionaries
+                        # if searching by isbn you will only get one result
+                        # but you must still access the data via index
                         book_metadata = results[0]
                         logging.debug(book_metadata)
 
@@ -250,6 +263,8 @@ Otherwise, it must include the isbn for each title and the book metadata will be
                         logging.debug(book)
 
                         bookshelves.addToDatabase(book)
+        else:
+            terminate_program()
 
 
 def open_lib_search(isbn: str) -> List[Dict[str, str]]:
@@ -324,8 +339,7 @@ def confirm_user_input(check: str):
     if check[0].lower() == "y":
         return True
     else:
-        logging.critical("Exiting program.")
-        sys.exit(1)
+        terminate_program
 
 
 def usage():
@@ -335,8 +349,18 @@ Usage:
     rosewater.py [args] [opt-book-isbn]
     # Add book to datebase:
     rosewater.py -a [valid-isbn]
+    # import to database from csv
+    rosewater.py -i [path-to-csv]
+    # export database to csv
+    rosewater.py -e
     """
     )
+
+
+def terminate_program():
+    """Wrapper function to quickly and clearly exit program"""
+    logging.critical("Terminating program")
+    sys.exit(1)
 
 
 def main():
@@ -344,7 +368,7 @@ def main():
     if (len(sys.argv)) == 1:
         logging.info("Invalid usage: no args passed\n")
         usage()
-        sys.exit(1)
+        terminate_program()
     else:
         args = parser.parse_args()
         logging.debug(args)
@@ -353,7 +377,7 @@ def main():
 
             if not validate_isbn(isbn):
                 logging.critical("Invalid isbn given.")
-                sys.exit(1)
+                terminate_program()
 
             logging.info("searching for %s", isbn)
             books_metadata = open_lib_search(isbn)
@@ -391,13 +415,15 @@ def main():
             import_csv_filepath = args.import_csv
             if os.path.exists(import_csv_filepath) is False:
                 logging.critical("CSV filepath does not exist: %s", import_csv_filepath)
+                terminate_program
 
             bookshelves = Bookshelves(PATH_TO_DATABASE)
 
             bookshelves.importFromCSV(import_csv_filepath)
 
         else:
-            logging.info("Something else")
+            logging.critical("Invalid args given.")
+            terminate_program
 
 
 if __name__ == "__main__":
