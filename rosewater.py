@@ -72,7 +72,7 @@ class Book:
         comments = input(
             f"""Would you like to add any comments for {self}? Press enter to skip. Otherwise type comments below:
 
-                         """
+"""
         )
         self.comments = comments
 
