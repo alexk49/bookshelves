@@ -16,8 +16,8 @@ logging.basicConfig(
 
 DATA_FOLDER = "data"
 
-PATH_TO_DATABASE = os.path.join(DATA_FOLDER, "bookshelf.db")
-PATH_TO_CSV = os.path.join(DATA_FOLDER, "bookshelf.csv")
+PATH_TO_DATABASE = os.path.join(DATA_FOLDER, "bookshelves.db")
+PATH_TO_CSV = os.path.join(DATA_FOLDER, "bookshelves.csv")
 
 parser = argparse.ArgumentParser()
 
@@ -26,6 +26,9 @@ parser.add_argument(
     "-e", "--export", action="store_true", help="Export database to csv"
 )
 parser.add_argument("-i", "--import_csv", help="Import csv file to database")
+parser.add_argument(
+    "-t", "--top_ten", action="store_true", help="View top 10 most read books ten books"
+)
 
 
 class Book:
@@ -41,10 +44,10 @@ class Book:
             self.title = book_metadata["title"]
             self.author = book_metadata["author"]
             self.isbn = book_metadata["isbn"]
-            self.num_of_pages = book_metadata["number-of-pages"]
-            self.pub_date = book_metadata["publication-date"]
+            self.num_of_pages = book_metadata["number_of_pages"]
+            self.pub_date = book_metadata["publication_date"]
             self.publisher = book_metadata["publisher"]
-            self.open_lib_work_key = book_metadata["open-lib-key"]
+            self.open_lib_work_key = book_metadata["open_lib_key"]
 
         except KeyError:
             # keys from open lib import
@@ -55,6 +58,23 @@ class Book:
             self.pub_date = book_metadata["pub_date"]
             self.publisher = book_metadata["publisher"]
             self.open_lib_work_key = book_metadata["work_key"]
+
+        try:
+            # if no comments field set to blank
+            # data from the open library won't ever have comments
+            # so this is neccessary for compatability
+            self.comments = book_metadata["comments"]
+        except KeyError:
+            self.comments = ""
+
+    def addComments(self):
+        """Check to add comments to book object"""
+        comments = input(
+            f"""Would you like to add any comments for {self}? Press enter to skip. Otherwise type comments below:
+
+                         """
+        )
+        self.comments = comments
 
     def __repr__(self):
         """Return a string of the expression that creates the object"""
@@ -75,6 +95,7 @@ class Book:
                 self.pub_date,
                 self.publisher,
                 self.open_lib_work_key,
+                self.comments,
             ]
         )
 
@@ -89,10 +110,11 @@ class Book:
                     "title",
                     "author",
                     "isbn",
-                    "number-of-pages",
-                    "publication-date",
+                    "number_of_pages",
+                    "publication_date",
                     "publisher",
-                    "open-lib-key",
+                    "open_lib_key",
+                    "comments",
                 ]
             )
             writer.writerow(self)
@@ -115,7 +137,7 @@ class Bookshelves:
         connection = sqlite3.connect(path_to_database)
         cursor = connection.cursor()
         cursor.execute(
-            "CREATE TABLE bookshelf(title, author, isbn, num_of_pages, pub_date, publisher, open_lib_work_key)"
+            "CREATE TABLE bookshelves(title, author, isbn, number_of_pages, publication_date, publisher, open_lib_key, comments)"
         )
         connection.close()
         return path_to_database
@@ -136,8 +158,12 @@ class Bookshelves:
         """Add a book to the database."""
         logging.info("Inserting %s into %s", book, PATH_TO_DATABASE)
         connection, cursor = self.getConnection()
+
+        logging.debug(book.comments)
+        logging.debug(type(book.comments))
+
         cursor.execute(
-            """INSERT into "bookshelf" (title, author, isbn, num_of_pages, pub_date, publisher, open_lib_work_key) VALUES (?, ?, ?, ?, ?, ?, ?)""",
+            """INSERT into "bookshelves" (title, author, isbn, number_of_pages, publication_date, publisher, open_lib_key, comments) VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 book.title,
                 book.author,
@@ -146,6 +172,7 @@ class Bookshelves:
                 book.pub_date,
                 book.publisher,
                 book.open_lib_work_key,
+                book.comments,
             ),
         )
         connection.commit()
@@ -154,15 +181,17 @@ class Bookshelves:
     def exportToCSV(self, PATH_TO_CSV: str):
         """Export database to csv file."""
         connection, cursor = self.getConnection()
-        bookshelf = cursor.execute("""SELECT * from bookshelf""")
+        bookshelves = cursor.execute("""SELECT * from bookshelves""")
 
-        logging.debug(bookshelf)
-        logging.debug(type(bookshelf))
+        logging.debug(bookshelves)
+        logging.debug(type(bookshelves))
 
         datestamp = datetime.today().strftime("%Y%m%d")
 
-        output_filename = "bookshelf-" + datestamp + ".csv"
+        output_filename = "bookshelves-" + datestamp + ".csv"
         output_filepath = os.path.join(DATA_FOLDER, output_filename)
+
+        logging.info("Writing to %s", output_filepath)
 
         with open(output_filepath, "w") as output:
             writer = csv.writer(output)
@@ -171,13 +200,15 @@ class Bookshelves:
                     "title",
                     "author",
                     "isbn",
-                    "number-of-pages",
-                    "publication-date",
+                    "number_of_pages",
+                    "publication_date",
                     "publisher",
-                    "open-lib-key",
+                    "open_lib_key",
+                    "comments",
                 ]
             )
-            for book in bookshelf:
+            for book in bookshelves:
+                logging.info("Writing %s to csv", book["title"])
                 writer.writerow(book)
 
         self.closeDB(connection)
@@ -191,10 +222,11 @@ then it will be directly imported into the database:
 title,
 author,
 isbn,
-number-of-pages,
-publication-date,
+number_of_pages,
+publication_date,
 publisher,
-open-lib-key
+open_lib_key,
+comments
 
 Otherwise, it must have a column titled isbn.
 And an isbn listed for each title and the book metadata will be fetched from the open library.
@@ -216,10 +248,11 @@ Would you like to continue? y/n: "
                 "title",
                 "author",
                 "isbn",
-                "number-of-pages",
-                "publication-date",
+                "number_of_pages",
+                "publication_date",
                 "publisher",
-                "open-lib-key",
+                "open_lib_key",
+                "comments",
             ]
 
             with open(import_csv_file, "r") as csv_file:
@@ -265,6 +298,20 @@ Would you like to continue? y/n: "
                         bookshelves.addToDatabase(book)
         else:
             terminate_program()
+
+    def getTopTenBooks(self):
+        """Get top ten most read books in database"""
+
+        connection, cursor = self.getConnection()
+        top_ten = cursor.execute(
+            """SELECT *, count(title) FROM "bookshelves" GROUP BY title ORDER by count(title) DESC LIMIT 10"""
+        )
+        print("\nTOP TEN")
+        print("~~~~~~~")
+        for row in top_ten:
+            count = row[-1]
+            book = Book(row)
+            print(f"{book} has been read {count} times.")
 
 
 def open_lib_search(isbn: str) -> List[Dict[str, str]]:
@@ -392,24 +439,26 @@ def main():
             logging.info(book)
 
             check = input(
-                f"Is {book} the book you want to add to your bookshelf? y/n: "
+                f"Is {book} the book you want to add to your bookshelves? y/n: "
             )
             check = confirm_user_input(check)
+
+            book.addComments()
 
             if check:
                 logging.info("Writing %s to csv", book.isbn)
                 book.writeToCSV()
 
-                logging.info("Establishing Bookshelf class")
-                bookshelf = Bookshelves(PATH_TO_DATABASE)
+                logging.info("Establishing Bookshelves class")
+                bookshelves = Bookshelves(PATH_TO_DATABASE)
 
-                logging.info("Writing %s to bookshelf", book.isbn)
-                bookshelf.addToDatabase(book)
+                logging.info("Writing %s to bookshelves", book.isbn)
+                bookshelves.addToDatabase(book)
         elif args.export:
-            logging.info("Establishing Bookshelf class")
-            bookshelf = Bookshelves(PATH_TO_DATABASE)
+            logging.info("Establishing bookshelves class")
+            bookshelves = Bookshelves(PATH_TO_DATABASE)
 
-            bookshelf.exportToCSV(PATH_TO_CSV)
+            bookshelves.exportToCSV(PATH_TO_CSV)
         elif args.import_csv:
             logging.debug(args.import_csv)
             import_csv_filepath = args.import_csv
@@ -420,6 +469,12 @@ def main():
             bookshelves = Bookshelves(PATH_TO_DATABASE)
 
             bookshelves.importFromCSV(import_csv_filepath)
+        elif args.top_ten:
+            logging.debug(args.top_ten)
+
+            bookshelves = Bookshelves(PATH_TO_DATABASE)
+
+            bookshelves.getTopTenBooks()
 
         else:
             logging.critical("Invalid args given.")
