@@ -1,4 +1,4 @@
-"""Rosewater is a command line app for keeping track of the books"""
+"""bookshelves is a command line app for keeping track of the books"""
 import argparse
 import csv
 from datetime import datetime
@@ -393,13 +393,13 @@ def usage():
     logging.info(
         """
 Usage:
-    rosewater.py [args] [opt-book-isbn]
+    bookshelves.py [args] [opt-book-isbn]
     # Add book to datebase:
-    rosewater.py -a [valid-isbn]
+    bookshelves.py -a [valid-isbn]
     # import to database from csv
-    rosewater.py -i [path-to-csv]
+    bookshelves.py -i [path-to-csv]
     # export database to csv
-    rosewater.py -e
+    bookshelves.py -e
     """
     )
 
