@@ -6,7 +6,7 @@ import logging
 import os
 import sqlite3
 import sys
-from typing import Type, List, Dict
+from typing import Dict, List, Optional, Type
 
 import requests
 
@@ -34,11 +34,41 @@ parser.add_argument(
 class Book:
     """Class for individual book entries"""
 
-    def __init__(self, book_metadata: Dict[str, str]):
-        """Create new book object from book metadata.
+    def __init__(
+        self,
+        book_metadata: Optional[Dict[str, str]] = None,
+        isbn: Optional[str] = None,
+    ):
+        """Create new book object from book metadata or from isbn.
+        If created via isbn call will be made to open library.
         Book metadata dictionary must be created from either
         the bookshelves class database schema
         or imported from the open library api"""
+        logging.debug("Init for Book class")
+
+        if book_metadata is None and isbn is None:
+            logging.critical("No valid args passed for book object")
+            terminate_program()
+
+        logging.debug("ISBN passed to class: %s", isbn)
+        logging.debug("book metadata passed to class: %s", book_metadata)
+
+        if book_metadata is None:
+            if self.validateISBN(isbn) is False:
+                logging.critical("Invalid ISBN passed")
+                terminate_program()
+
+            # book metadata fetched via isbn will always return one result
+            # but result will always be a list
+            # index 0 gets actual metadata
+            book_metadata = self.openLibSearch(isbn)[0]
+
+        logging.debug(book_metadata)
+
+        if book_metadata is None:
+            logging.critical("No book metadata found")
+            terminate_program()
+
         try:
             # keys from csv import
             self.title = book_metadata["title"]
@@ -67,10 +97,89 @@ class Book:
         except KeyError:
             self.comments = ""
 
+        # keep original book metadata
+        # and org isbn passed
+        # passed for debugging
+        self.book_metadata = book_metadata
+        self.creation_isbn = isbn
+
+        logging.debug(self.__repr__())
+
+    @classmethod
+    def openLibSearch(cls, isbn: str) -> List[Dict[str, str]]:
+        """Get book data using general open library search api."""
+        url = "https://openlibrary.org/search.json"
+
+        # create url query
+        search_url = url + "?q=" + isbn + "&limit=20"
+
+        response = requests.get(search_url)
+        response_dict = response.json()
+
+        results = []
+        num = 0
+
+        try:
+            # get basic biblographic data
+            work_key = response_dict["docs"][num]["key"]
+            title = response_dict["docs"][num]["title"]
+            author = response_dict["docs"][num]["author_name"]
+            # handle multiple authors
+            if len(author) == 1:
+                author = author[0]
+            else:
+                author = ", ".join(author)
+
+            # handle values that caused key errors on rarer books in testing
+
+            num_of_pages = response_dict["docs"][num]["number_of_pages_median"]
+            first_publish_date = response_dict["docs"][num]["first_publish_year"]
+            publisher = response_dict["docs"][num]["publisher"][0]
+
+        except KeyError as e:
+            # if work doesn't have basic biblographic data ignore it
+            logging.info(f"{e}: invalid book")
+
+        results.append(
+            {
+                "work_key": work_key,
+                "title": title,
+                "pub_date": first_publish_date,
+                "num_of_pages": num_of_pages,
+                "author": author,
+                "isbn": isbn,
+                "publisher": publisher,
+            }
+        )
+
+        return results
+
+    @staticmethod
+    def validateISBN(isbn: str) -> bool:
+        """Test for valid isbn"""
+        logging.debug(isbn)
+        logging.debug(type(isbn))
+
+        isbn = isbn.strip()
+
+        if isbn.isdigit() is False:
+            logging.critical("ISBN contains characters that aren't numbers")
+            return False
+        else:
+            length = len(isbn)
+            if length == 10 or length == 13:
+                return True
+            else:
+                logging.info("ISBN is invalid length")
+                logging.debug(len(isbn))
+                return False
+
     def addComments(self):
         """Check to add comments to book object"""
         comments = input(
-            f"""Would you like to add any comments for {self}? Press enter to skip. Otherwise type comments below:
+            f"""Would you like to add any comments for {self}?
+
+Press enter to skip. Otherwise type comments below:
 
 """
         )
@@ -78,7 +187,9 @@ class Book:
 
     def __repr__(self):
         """Return a string of the expression that creates the object"""
-        return f"{self.__class__.qualname__}"
+        return (
+            f"{self.__class__.__qualname__}({self.creation_isbn}, {self.book_metadata})"
+        )
 
     def __str__(self):
         """Return human readable string"""
@@ -123,13 +234,19 @@ class Book:
 class Bookshelves:
     """Class for database of books"""
 
-    def __init__(self, path_to_database: str) -> None:
+    def __init__(self, path_to_database: str):
         """Create new bookshelves database object"""
+        logging.debug("Init for Bookshelves class")
+        self.path_to_database = path_to_database
+
         if os.path.exists(path_to_database):
             database = path_to_database
         else:
             database = self.createNewDatabase(path_to_database)
+
         self.db = database
+
+        logging.debug(self.__repr__())
 
     @classmethod
     def createNewDatabase(cls, path_to_database: str) -> str:
@@ -270,7 +387,8 @@ Would you like to continue? y/n: "
                     logging.debug(books_metadata[0]["title"])
 
                     for book_metadata in books_metadata:
-                        book = Book(book_metadata)
+                        # must explicitly pass book metadata to book obj
+                        book = Book(book_metadata=book_metadata)
 
                         logging.debug(type(book))
 
@@ -284,7 +402,7 @@ Would you like to continue? y/n: "
                         logging.debug(isbn)
                         logging.debug(type(isbn))
 
-                        results = open_lib_search(isbn)
+                        results = Book.openLibSearch(isbn)
 
                         # open library returns results as list of dictionaries
                         # if searching by isbn you will only get one result
@@ -313,72 +431,9 @@ Would you like to continue? y/n: "
             book = Book(row)
             print(f"{book} has been read {count} times.")
 
-
-def open_lib_search(isbn: str) -> List[Dict[str, str]]:
-    """Get book data using general open library search api."""
-    url = "https://openlibrary.org/search.json"
-
-    # create url query
-    search_url = url + "?q=" + isbn + "&limit=20"
-
-    response = requests.get(search_url)
-    response_dict = response.json()
-
-    results = []
-    num = 0
-    # get basic biblographic data
-    try:
-        work_key = response_dict["docs"][num]["key"]
-        title = response_dict["docs"][num]["title"]
-        author = response_dict["docs"][num]["author_name"]
-        # handle multiple authors
-        if len(author) == 1:
-            author = author[0]
-        else:
-            author = ", ".join(author)
-
-        # handle values that caused key errors on rarer books in testing
-
-        num_of_pages = response_dict["docs"][num]["number_of_pages_median"]
-        first_publish_date = response_dict["docs"][num]["first_publish_year"]
-        publisher = response_dict["docs"][num]["publisher"][0]
-
-    except KeyError as e:
-        # if work doesn't have basic biblographic data ignore it
-        logging.info(f"{e}: invalid book")
-
-    results.append(
-        {
-            "work_key": work_key,
-            "title": title,
-            "pub_date": first_publish_date,
-            "num_of_pages": num_of_pages,
-            "author": author,
-            "isbn": isbn,
-            "publisher": publisher,
-        }
-    )
-
-    return results
-
-
-def validate_isbn(isbn: str) -> bool:
-    """Test for valid isbn"""
-    logging.debug(isbn)
-    logging.debug(type(isbn))
-
-    isbn = isbn.strip()
-    if isbn.isdigit() is False:
-        logging.info("ISBN contains characters that aren't numbers")
-        return False
-    else:
-        length = len(isbn)
-        if length == 10 or length == 13:
-            return True
-        else:
-            logging.info("ISBN is invalid length")
-            logging.debug(len(isbn))
-            return False
+    def __repr__(self):
+        """Return a string of the expression that creates the object"""
+        return f"{self.__class__.__qualname__}({self.path_to_database})"
 
 
 def confirm_user_input(check: str):
@@ -386,7 +441,7 @@ def confirm_user_input(check: str):
     if check[0].lower() == "y":
         return True
     else:
-        terminate_program
+        terminate_program()
 
 
 def usage():
@@ -400,6 +455,8 @@ Usage:
     bookshelves.py -i [path-to-csv]
     # export database to csv
     bookshelves.py -e
+    # view top ten books
+    bookshelves.py -t
     """
     )
 
@@ -422,19 +479,11 @@ def main():
         if args.add:
             isbn = args.add
 
-            if not validate_isbn(isbn):
-                logging.critical("Invalid isbn given.")
-                terminate_program()
-
             logging.info("searching for %s", isbn)
-            books_metadata = open_lib_search(isbn)
 
-            if not books_metadata:
-                logging.critical("No results found for %s", isbn)
-
-            logging.debug(books_metadata)
-
-            book = Book(books_metadata[0])
+            # must explicitly give isbn
+            # when creating book obj from single isbn
+            book = Book(isbn=isbn)
 
             logging.info(book)
 
@@ -464,7 +513,7 @@ def main():
             import_csv_filepath = args.import_csv
             if os.path.exists(import_csv_filepath) is False:
                 logging.critical("CSV filepath does not exist: %s", import_csv_filepath)
-                terminate_program
+                terminate_program()
 
             bookshelves = Bookshelves(PATH_TO_DATABASE)
 
@@ -478,7 +527,7 @@ def main():
 
         else:
             logging.critical("Invalid args given.")
-            terminate_program
+            terminate_program()
 
 
 if __name__ == "__main__":
