@@ -224,6 +224,8 @@ Press enter to skip. Otherwise type comments below:
                 self.publisher,
                 self.open_lib_work_key,
                 self.comments,
+                self.date_added,
+                self.date_finished,
             ]
         )
 
@@ -341,6 +343,8 @@ class Bookshelves:
                     "publisher",
                     "open_lib_key",
                     "comments",
+                    "date_added",
+                    "date_finished",
                 ]
             )
             for book in bookshelves:
@@ -362,7 +366,9 @@ number_of_pages,
 publication_date,
 publisher,
 open_lib_key,
-comments
+comments,
+date_added,
+date_finished
 
 Otherwise, it must have a column titled isbn.
 And an isbn listed for each title and the book metadata will be fetched from the open library.
@@ -389,6 +395,8 @@ Would you like to continue? y/n: "
                 "publisher",
                 "open_lib_key",
                 "comments",
+                "date_added",
+                "date_finished",
             ]
 
             with open(import_csv_file, "r") as csv_file:
