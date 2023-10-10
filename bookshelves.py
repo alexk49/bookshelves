@@ -43,8 +43,15 @@ class Book:
         If created via isbn call will be made to open library.
         Book metadata dictionary must be created from either
         the bookshelves class database schema
-        or imported from the open library api"""
+        or imported from the open library api.
+        The init method fills out data types that may not have been
+        passed across from the API call but would have been passed
+        across from a csv import."""
         logging.debug("Init for Book class")
+
+        # define datestamp to be used for default date values
+        # if dates not supplied
+        datestamp = datetime.today().strftime("%Y-%m-%d")
 
         if book_metadata is None and isbn is None:
             logging.critical("No valid args passed for book object")
@@ -97,6 +104,15 @@ class Book:
         except KeyError:
             self.comments = ""
 
+        try:
+            self.date_added = book_metadata["date_added"]
+        except KeyError:
+            self.date_added = datestamp
+        try:
+            self.date_finished = book_metadata["date_finished"]
+        except KeyError:
+            self.date_finished = datestamp
+
         # keep original book metadata
         # and org isbn passed
         # passed for debugging
@@ -124,6 +140,7 @@ class Book:
             work_key = response_dict["docs"][num]["key"]
             title = response_dict["docs"][num]["title"]
             author = response_dict["docs"][num]["author_name"]
+
             # handle multiple authors
             if len(author) == 1:
                 author = author[0]
@@ -254,7 +271,7 @@ class Bookshelves:
         connection = sqlite3.connect(path_to_database)
         cursor = connection.cursor()
         cursor.execute(
-            "CREATE TABLE bookshelves(title, author, isbn, number_of_pages, publication_date, publisher, open_lib_key, comments)"
+            "CREATE TABLE bookshelves(id integer primary key autoincrement, title, author, isbn, number_of_pages, publication_date, publisher, open_lib_key, date_added, date_finished, comments)"
         )
         connection.close()
         return path_to_database
@@ -280,7 +297,7 @@ class Bookshelves:
         logging.debug(type(book.comments))
 
         cursor.execute(
-            """INSERT into "bookshelves" (title, author, isbn, number_of_pages, publication_date, publisher, open_lib_key, comments) VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+            """INSERT into "bookshelves" (title, author, isbn, number_of_pages, publication_date, publisher, open_lib_key, comments, date_added, date_finished) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 book.title,
                 book.author,
@@ -290,6 +307,8 @@ class Bookshelves:
                 book.publisher,
                 book.open_lib_work_key,
                 book.comments,
+                book.date_added,
+                book.date_finished,
             ),
         )
         connection.commit()
