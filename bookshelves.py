@@ -21,7 +21,7 @@ PATH_TO_CSV = os.path.join(DATA_FOLDER, "bookshelves.csv")
 
 parser = argparse.ArgumentParser()
 
-parser.add_argument("-a", "--add", help="Add to database")
+parser.add_argument("-a", "--add", help="Add to database", nargs="+")
 parser.add_argument(
     "-e", "--export", action="store_true", help="Export database to csv"
 )
@@ -83,7 +83,7 @@ class Book:
             self.isbn = book_metadata["isbn"]
             self.num_of_pages = book_metadata["number_of_pages"]
             self.pub_date = book_metadata["publication_date"]
-            self.publisher = book_metadata["publisher"]
+            self.publishers = book_metadata["publishers"]
             self.open_lib_work_key = book_metadata["open_lib_key"]
 
         except KeyError:
@@ -93,7 +93,7 @@ class Book:
             self.isbn = book_metadata["isbn"]
             self.num_of_pages = book_metadata["num_of_pages"]
             self.pub_date = book_metadata["pub_date"]
-            self.publisher = book_metadata["publisher"]
+            self.publishers = book_metadata["publisher"]
             self.open_lib_work_key = book_metadata["work_key"]
 
         try:
@@ -151,7 +151,14 @@ class Book:
 
             num_of_pages = response_dict["docs"][num]["number_of_pages_median"]
             first_publish_date = response_dict["docs"][num]["first_publish_year"]
-            publisher = response_dict["docs"][num]["publisher"][0]
+
+            publishers = response_dict["docs"][num]["publisher"]
+
+            # handle multiple publishers
+            if len(publishers) == 1:
+                publishers = publishers[0]
+            else:
+                publishers = ", ".join(publishers)
 
         except KeyError as e:
             # if work doesn't have basic biblographic data ignore it
@@ -165,7 +172,7 @@ class Book:
                 "num_of_pages": num_of_pages,
                 "author": author,
                 "isbn": isbn,
-                "publisher": publisher,
+                "publisher": publishers,
             }
         )
 
@@ -210,7 +217,7 @@ Press enter to skip. Otherwise type comments below:
 
     def __str__(self):
         """Return human readable string"""
-        return f"{self.title} by {self.author}, published in {self.pub_date} by {self.publisher}"
+        return f"{self.title} by {self.author}, published in {self.pub_date}"
 
     def __iter__(self):
         """Create iterable of book metadata."""
@@ -221,7 +228,7 @@ Press enter to skip. Otherwise type comments below:
                 self.isbn,
                 self.num_of_pages,
                 self.pub_date,
-                self.publisher,
+                self.publishers,
                 self.open_lib_work_key,
                 self.comments,
                 self.date_added,
@@ -242,7 +249,7 @@ Press enter to skip. Otherwise type comments below:
                     "isbn",
                     "number_of_pages",
                     "publication_date",
-                    "publisher",
+                    "publishers",
                     "open_lib_key",
                     "comments",
                 ]
@@ -273,7 +280,7 @@ class Bookshelves:
         connection = sqlite3.connect(path_to_database)
         cursor = connection.cursor()
         cursor.execute(
-            "CREATE TABLE bookshelves(id integer primary key autoincrement, title, author, isbn, number_of_pages, publication_date, publisher, open_lib_key, date_added, date_finished, comments)"
+            "CREATE TABLE bookshelves(id integer primary key autoincrement, title, author, isbn, number_of_pages, publication_date, publishers, open_lib_key, date_added, date_finished, comments)"
         )
         connection.close()
         return path_to_database
@@ -299,14 +306,14 @@ class Bookshelves:
         logging.debug(type(book.comments))
 
         cursor.execute(
-            """INSERT into "bookshelves" (title, author, isbn, number_of_pages, publication_date, publisher, open_lib_key, comments, date_added, date_finished) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            """INSERT into "bookshelves" (title, author, isbn, number_of_pages, publication_date, publishers, open_lib_key, comments, date_added, date_finished) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 book.title,
                 book.author,
                 book.isbn,
                 book.num_of_pages,
                 book.pub_date,
-                book.publisher,
+                book.publishers,
                 book.open_lib_work_key,
                 book.comments,
                 book.date_added,
@@ -335,16 +342,17 @@ class Bookshelves:
             writer = csv.writer(output)
             writer.writerow(
                 [
+                    "id",
                     "title",
                     "author",
                     "isbn",
                     "number_of_pages",
                     "publication_date",
-                    "publisher",
+                    "publishers",
                     "open_lib_key",
-                    "comments",
                     "date_added",
                     "date_finished",
+                    "comments",
                 ]
             )
             for book in bookshelves:
@@ -364,11 +372,11 @@ author,
 isbn,
 number_of_pages,
 publication_date,
-publisher,
+publishers,
 open_lib_key,
-comments,
 date_added,
 date_finished
+comments,
 
 Otherwise, it must have a column titled isbn.
 And an isbn listed for each title and the book metadata will be fetched from the open library.
@@ -392,11 +400,11 @@ Would you like to continue? y/n: "
                 "isbn",
                 "number_of_pages",
                 "publication_date",
-                "publisher",
+                "publishers",
                 "open_lib_key",
-                "comments",
                 "date_added",
                 "date_finished",
+                "comments",
             ]
 
             with open(import_csv_file, "r") as csv_file:
@@ -463,6 +471,18 @@ Would you like to continue? y/n: "
         return f"{self.__class__.__qualname__}({self.path_to_database})"
 
 
+def validate_date(date: str):
+    """Validate given string and return true/false
+    depending on if string is a valid date"""
+    try:
+        datetime.strptime(date, "%Y-%m-%d")
+        return True
+    except ValueError:
+        logging.info("Invalid date given")
+        logging.info("Format must be yyyy-mm-dd")
+        return False
+
+
 def confirm_user_input(check: str):
     """Used to check user input for yes or no."""
     if check[0].lower() == "y":
@@ -476,7 +496,10 @@ def usage():
         """
 Usage:
     bookshelves.py [args] [opt-book-isbn]
-    # Add book to datebase:
+    # Add book to database:
+    bookshelves.py -a [valid-isbn]
+    # Add book to database with optional args:
+    bookshelves.py -a [valid-isbn] [date-book-finished: yyyy-mm-dd] ["comments on book"]
     bookshelves.py -a [valid-isbn]
     # import to database from csv
     bookshelves.py -i [path-to-csv]
@@ -504,7 +527,24 @@ def main():
         args = parser.parse_args()
         logging.debug(args)
         if args.add:
-            isbn = args.add
+            logging.debug(args.add)
+
+            isbn = None
+            date_finished = None
+            comments = None
+
+            for arg in args.add:
+                if Book.validateISBN(arg) is True:
+                    isbn = arg
+                elif validate_date(arg) is True:
+                    date_finished = arg
+                else:
+                    comments = arg
+
+            if isbn is None:
+                logging.critical("No valid ISBN passed for adding book to database")
+                logging.debug(args.add)
+                terminate_program()
 
             logging.info("searching for %s", isbn)
 
@@ -517,9 +557,19 @@ def main():
             check = input(
                 f"Is {book} the book you want to add to your bookshelves? y/n: "
             )
+
             check = confirm_user_input(check)
 
-            book.addComments()
+            if comments is None:
+                logging.info("Checking for user comments")
+                book.addComments()
+            else:
+                logging.info("Assigning user comments from args passed")
+                book.comments = comments
+
+            if date_finished is not None:
+                logging.info("Assigning date finished for book from args passed")
+                book.date_finished = date_finished
 
             if check:
                 logging.info("Writing %s to csv", book.isbn)
