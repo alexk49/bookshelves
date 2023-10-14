@@ -2,6 +2,7 @@
 import argparse
 import csv
 from datetime import datetime
+from json import dumps
 import logging
 import os
 import sqlite3
@@ -112,7 +113,10 @@ class Book:
             self.date_finished = book_metadata["date_finished"]
         except KeyError:
             self.date_finished = datestamp
-
+        try:
+            self.id = book_metadata["id"]
+        except KeyError:
+            self.id = ""
         # keep original book metadata
         # and org isbn passed
         # passed for debugging
@@ -162,7 +166,14 @@ class Book:
 
         except KeyError as e:
             # if work doesn't have basic biblographic data ignore it
-            logging.info(f"{e}: invalid book")
+            logging.critical(f"{e}: invalid book")
+            return None
+        except IndexError as e:
+            logging.critical(f"{e}: Unable to get data")
+            return None
+        except Exception as e:
+            logging.critical(f"{e}: unknown error getting book data")
+            return None
 
         results.append(
             {
@@ -323,6 +334,24 @@ class Bookshelves:
         connection.commit()
         self.closeDB(connection)
 
+    def checkIfIDExists(self, id_value: str) -> bool:
+        """Used to check if an ID value exists to avoid
+        duplicates when importing from csv."""
+        connection, cursor = self.getConnection()
+        query = cursor.execute(
+            """SELECT id FROM bookshelves WHERE id = ?""", (id_value,)
+        )
+        logging.debug(query)
+        # if anything is returned then id exists
+        result = query.fetchone()
+        logging.debug(result)
+        if result:
+            return True
+        else:
+            return False
+
+            """INSERT into "bookshelves" (title, author, isbn, number_of_pages, publication_date, publishers, open_lib_key, comments, date_added, date_finished) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+
     def exportToCSV(self, PATH_TO_CSV: str):
         """Export database to csv file."""
         connection, cursor = self.getConnection()
@@ -367,6 +396,7 @@ class Bookshelves:
             """If your CSV has the following columns in order,
 then it will be directly imported into the database:
 
+id,
 title,
 author,
 isbn,
@@ -395,6 +425,7 @@ Would you like to continue? y/n: "
             bookshelves = Bookshelves(PATH_TO_DATABASE)
 
             columns_list = [
+                "id",
                 "title",
                 "author",
                 "isbn",
@@ -406,8 +437,10 @@ Would you like to continue? y/n: "
                 "date_finished",
                 "comments",
             ]
+            fail_count = 0
+            success_count = 0
 
-            with open(import_csv_file, "r") as csv_file:
+            with open(import_csv_file, "r", encoding="utf-8-sig") as csv_file:
                 reader = csv.DictReader(csv_file)
 
                 logging.debug("Headings: %s ", reader.fieldnames)
@@ -425,32 +458,69 @@ Would you like to continue? y/n: "
                         # must explicitly pass book metadata to book obj
                         book = Book(book_metadata=book_metadata)
 
+                        # check if id in database
+                        bookshelves = Bookshelves(PATH_TO_DATABASE)
+
+                        result = bookshelves.checkIfIDExists(book_metadata["id"])
+                        logging.debug(result)
                         logging.debug(type(book))
 
-                        bookshelves.addToDatabase(book)
+                        if result:
+                            logging.info(
+                                "id already exists in database for: %s. Id value: %s",
+                                book_metadata["title"],
+                                book_metadata["id"],
+                            )
+                            # id already exists
+                            # do nothing
+                            continue
+                        else:
+                            bookshelves.addToDatabase(book)
+                            success_count += 1
 
                 else:
                     logging.info("Getting data from open library")
 
                     for row in reader:
+                        logging.debug(row)
                         isbn = row["isbn"]
                         logging.debug(isbn)
                         logging.debug(type(isbn))
 
-                        results = Book.openLibSearch(isbn)
+                        if Book.validateISBN(isbn):
+                            results = Book.openLibSearch(isbn)
 
-                        # open library returns results as list of dictionaries
-                        # if searching by isbn you will only get one result
-                        # but you must still access the data via index
-                        book_metadata = results[0]
-                        logging.debug(book_metadata)
+                            # ignore invalid results
+                            if results is None:
+                                self.writeFailedImportsToFile(row)
+                                fail_count += 1
+                                continue
+                            # open library returns results as list of dictionaries
+                            # if searching by isbn you will only get one result
+                            # but you must still access the data via index
+                            book_metadata = results[0]
+                            logging.debug(book_metadata)
 
-                        book = Book(book_metadata)
-                        logging.debug(book)
+                            book = Book(book_metadata)
+                            logging.debug(book)
 
-                        bookshelves.addToDatabase(book)
+                            bookshelves.addToDatabase(book)
+                            success_count += 1
+                        else:
+                            self.writeFailedImportsToFile(row)
+                            logging.critical("Invalid ISBN passed: %s", isbn)
+                            fail_count += 1
+                            continue
+                logging.info("%s number of titles successfully imported", success_count)
+                logging.info("With %s number of titles failed import", fail_count)
         else:
             terminate_program()
+
+    def writeFailedImportsToFile(self, row):
+        """Used to write failed imports from import csv
+        to failed imports file"""
+        with open("failed-imports.txt", "a+") as output:
+            output.write(dumps(row))
 
     def getTopTenBooks(self):
         """Get top ten most read books in database"""
