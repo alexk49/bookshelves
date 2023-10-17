@@ -3,6 +3,7 @@ import argparse
 import csv
 from datetime import datetime
 from json import dumps
+from collections import defaultdict
 import logging
 import os
 import sqlite3
@@ -31,12 +32,24 @@ parser.add_argument(
     "-t", "--top_ten", action="store_true", help="View top 10 most read books ten books"
 )
 
+# define datestamp to be used for default date values
+# if dates not supplied
+datestamp = datetime.today().strftime("%Y-%m-%d")
+
+default_dict = {
+    "date_added": datestamp,
+    "date_finished": datestamp,
+    "comments": "",
+    "id": "",
+}
+
 
 class Book:
     """Class for individual book entries"""
 
     def __init__(
         self,
+        default_dict,
         book_metadata: Optional[Dict[str, str]] = None,
         isbn: Optional[str] = None,
     ):
@@ -49,10 +62,6 @@ class Book:
         passed across from the API call but would have been passed
         across from a csv import."""
         logging.debug("Init for Book class")
-
-        # define datestamp to be used for default date values
-        # if dates not supplied
-        datestamp = datetime.today().strftime("%Y-%m-%d")
 
         if book_metadata is None and isbn is None:
             logging.critical("No valid args passed for book object")
@@ -76,6 +85,14 @@ class Book:
         if book_metadata is None:
             logging.critical("No book metadata found")
             terminate_program()
+        print(type(book_metadata))
+        new_book_metadata = defaultdict()
+
+        new_book_metadata.update(default_dict)
+
+        print(new_book_metadata)
+        new_book_metadata.update(book_metadata)
+        print(new_book_metadata)
 
         try:
             # keys from csv import
@@ -124,6 +141,47 @@ class Book:
         self.creation_isbn = isbn
 
         logging.debug(self.__repr__())
+
+    def openLibIsbn(isbn):
+        """get data back from open library api via isbn"""
+        # add isbn into url
+        url = f"https://openlibrary.org/isbn/{isbn}.json"
+
+        # get response as json
+        response = requests.get(url)
+        response_dict = response.json()
+
+        # get title and edition pub date
+        title = response_dict["title"]
+        pub_date = response_dict["publish_date"]
+
+        # authors goes via different page
+        authors = response_dict["authors"]
+
+        if len(authors) == 1:
+            author_key = authors[0]["key"]
+            author_url = "https://openlibrary.org" + author_key + ".json"
+
+            response = requests.get(author_url)
+            response_dict = response.json()
+            author = response_dict["name"]
+        else:
+            authors = ""
+
+            for count, author in enumerate(authors):
+                author_key = authors[count]["authors"]
+
+                author_url = "https://openlibrary.org" + author_key + ".json"
+
+                response = requests.get(author_url)
+                response_dict = response.json()
+                author = respons_dict["name"]
+
+                authors = authors + ", " + author
+            # reset numerous authors as one author value
+            author = authors
+
+        return (title, author, pub_date)
 
     @classmethod
     def openLibSearch(cls, isbn: str) -> List[Dict[str, str]]:
@@ -620,7 +678,7 @@ def main():
 
             # must explicitly give isbn
             # when creating book obj from single isbn
-            book = Book(isbn=isbn)
+            book = Book(default_dict=default_dict, isbn=isbn)
 
             logging.info(book)
 
