@@ -2,7 +2,6 @@
 import argparse
 import csv
 from datetime import datetime
-from json import dumps
 from collections import defaultdict
 import logging
 import os
@@ -36,25 +35,6 @@ parser.add_argument(
 # if dates not supplied
 datestamp = datetime.today().strftime("%Y-%m-%d")
 
-default_dict = {
-    "title": "",
-    "primary_author_key": "",
-    "primary_author": "",
-    "secondary_authors_keys": "",
-    "secondary_authors": "",
-    "isbn_13": "",
-    "edition_publish_date": "",
-    "number_of_pages": "",
-    "publisher": "",
-    "open_lib_key": "",
-    "goodreads_identifier": "",
-    "librarything_identifier": "",
-    "complete_open_lib_data": "",
-    "date_added": datestamp,
-    "date_finished": datestamp,
-    "comments": "",
-    "id": "",
-}
 
 default_header_rows = [
     "id",
@@ -81,7 +61,6 @@ class Book:
 
     def __init__(
         self,
-        default_dict,
         book_metadata: Optional[Dict[str, str]] = None,
         isbn: Optional[str] = None,
     ):
@@ -118,9 +97,7 @@ class Book:
             logging.critical("No book metadata found")
             terminate_program()
 
-        book_metadata_default_schema = defaultdict()
-        book_metadata_default_schema.update(default_dict)
-
+        book_metadata_default_schema = self.setDefaultDict()
         book_metadata_default_schema.update(book_metadata)
 
         book_metadata_default_schema.update(book_metadata)
@@ -149,8 +126,39 @@ class Book:
 
         logging.debug(self.__repr__())
 
+    @staticmethod
+    def setDefaultDict():
+        """Uses collections default dictionary method
+        to set default_dict values for the default
+        book metadata schema. This allows the user to update
+        the comments and date finished values which are unique to the user
+        and means any missing values default to an empty string."""
+        default_dict = {
+            "title": "",
+            "primary_author_key": "",
+            "primary_author": "",
+            "secondary_authors_keys": "",
+            "secondary_authors": "",
+            "isbn_13": "",
+            "edition_publish_date": "",
+            "number_of_pages": "",
+            "publisher": "",
+            "open_lib_key": "",
+            "goodreads_identifier": "",
+            "librarything_identifier": "",
+            "complete_open_lib_data": "",
+            "date_added": datestamp,
+            "date_finished": datestamp,
+            "comments": "",
+            "id": "",
+        }
+
+        book_metadata_default_schema = defaultdict()
+        book_metadata_default_schema.update(default_dict)
+        return book_metadata_default_schema
+
     @classmethod
-    def openLibIsbnSearch(cls, isbn: str) -> Dict[str, str]:
+    def openLibIsbnSearch(cls, isbn: str) -> Dict[str, str] | None:
         """get data back from open library api via isbn"""
         url = f"https://openlibrary.org/isbn/{isbn}.json"
 
@@ -160,8 +168,13 @@ class Book:
         response = requests.get(url)
         open_lib_data = response.json()
 
-        # authors goes via different page
-        authors_open_lib_keys = open_lib_data["authors"]
+        try:
+            # authors goes via different page
+            authors_open_lib_keys = open_lib_data["authors"]
+        except KeyError as e:
+            logging.critical("No author for %s in open library: %s", isbn, e)
+            book_metadata = None
+            return book_metadata
 
         secondary_authors = ""
         secondary_authors_keys = ""
@@ -207,28 +220,32 @@ class Book:
 
         # values that are indexed on 0 are returned as list
         # but should only get one result when searching via isbn
-        book_metadata = {
-            "title": open_lib_data["title"],
-            "primary_author_key": authors_open_lib_keys[0]["key"],
-            "primary_author": author,
-            "secondary_authors_keys": secondary_authors_keys,
-            "secondary_authors": secondary_authors,
-            "isbn_13": isbn,
-            "edition_publish_date": open_lib_data["publish_date"],
-            "number_of_pages": number_of_pages,
-            "publisher": open_lib_data["publishers"][0],
-            "open_lib_key": open_lib_data["key"],
-            "goodreads_identifier": goodreads_identifier,
-            "librarything_identifier": librarything_identifier,
-            "complete_open_lib_data": open_lib_data,
-        }
-
+        try:
+            book_metadata = {
+                "title": open_lib_data["title"],
+                "primary_author_key": authors_open_lib_keys[0]["key"],
+                "primary_author": author,
+                "secondary_authors_keys": secondary_authors_keys,
+                "secondary_authors": secondary_authors,
+                "isbn_13": isbn,
+                "edition_publish_date": open_lib_data["publish_date"],
+                "number_of_pages": number_of_pages,
+                "publisher": open_lib_data["publishers"][0],
+                "open_lib_key": open_lib_data["key"],
+                "goodreads_identifier": goodreads_identifier,
+                "librarything_identifier": librarything_identifier,
+                "complete_open_lib_data": open_lib_data,
+            }
+        except Exception as e:
+            logging.critical("Key value not found for %s", isbn, e)
+            book_metadata = None
+            return book_metadata
         logging.debug(book_metadata)
 
         return book_metadata
 
     @classmethod
-    def OpenLibSearch(cls, isbn: str) -> List[Dict[str, str]]:
+    def OpenLibSearch(cls, isbn: str) -> List[Dict[str, str]] | None:
         """Get book data using general open library search api."""
         url = "https://openlibrary.org/search.json"
 
@@ -578,9 +595,7 @@ Would you like to continue? y/n: "
 
                             logging.debug(book_metadata)
 
-                            book = Book(
-                                default_dict=default_dict, book_metadata=book_metadata
-                            )
+                            book = Book(book_metadata=book_metadata)
                             logging.debug(book)
 
                             # if spreadsheet includes user defined
@@ -615,10 +630,20 @@ Would you like to continue? y/n: "
     def writeFailedImportsToFile(self, row, error_message):
         """Used to write failed imports from import csv
         to failed imports file"""
-        nl = "\n"
-        error_message = str(error_message)
-        with open("data/failed-imports.txt", "a+", encoding="utf-8") as output:
-            output.writelines([error_message, (dumps(row)), nl])
+        failed_imports_path = os.path.join("data", "failed-imports.csv")
+
+        # add error message to row dictionary
+        row["error_message"] = str(error_message)
+
+        if os.path.exists(failed_imports_path) is False:
+            with open(failed_imports_path, "w", encoding="utf-8") as output:
+                writer = csv.DictWriter(output, row.keys())
+                writer.writeheader()
+                writer.writerow(row)
+        else:
+            with open(failed_imports_path, "a", encoding="utf-8") as output:
+                writer = csv.DictWriter(output, row.keys())
+                writer.writerow(row)
 
     def getTopTenBooks(self):
         """Get top ten most read books in database"""
@@ -631,7 +656,7 @@ Would you like to continue? y/n: "
         print("~~~~~~~")
         for row in top_ten:
             count = row[-1]
-            book = Book(row)
+            book = Book(book_metadata=row)
             print(f"{book} has been read {count} times.")
 
     def __repr__(self):
@@ -718,7 +743,7 @@ def main():
 
             # must explicitly give isbn
             # when creating book obj from single isbn
-            book = Book(default_dict=default_dict, isbn=isbn)
+            book = Book(isbn=isbn)
 
             logging.info(book)
 
