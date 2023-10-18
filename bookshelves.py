@@ -37,11 +37,43 @@ parser.add_argument(
 datestamp = datetime.today().strftime("%Y-%m-%d")
 
 default_dict = {
+    "title": "",
+    "primary_author_key": "",
+    "primary_author": "",
+    "secondary_authors_keys": "",
+    "secondary_authors": "",
+    "isbn_13": "",
+    "edition_publish_date": "",
+    "number_of_pages": "",
+    "publisher": "",
+    "open_lib_key": "",
+    "goodreads_identifier": "",
+    "librarything_identifier": "",
+    "complete_open_lib_data": "",
     "date_added": datestamp,
     "date_finished": datestamp,
     "comments": "",
     "id": "",
 }
+
+default_header_rows = [
+    "id",
+    "title",
+    "primary_author_key",
+    "primary_author",
+    "secondary_authors_keys",
+    "secondary_authors",
+    "isbn_13",
+    "edition_publish_date",
+    "number_of_pages",
+    "publisher",
+    "open_lib_key",
+    "goodreads_identifier",
+    "librarything_identifier",
+    "date_added",
+    "date_finished",
+    "comments",
+]
 
 
 class Book:
@@ -78,113 +110,125 @@ class Book:
             # book metadata fetched via isbn will always return one result
             # but result will always be a list
             # index 0 gets actual metadata
-            book_metadata = self.openLibSearch(isbn)[0]
+            book_metadata = self.openLibIsbnSearch(isbn)
 
         logging.debug(book_metadata)
 
         if book_metadata is None:
             logging.critical("No book metadata found")
             terminate_program()
-        print(type(book_metadata))
-        new_book_metadata = defaultdict()
 
-        new_book_metadata.update(default_dict)
+        book_metadata_default_schema = defaultdict()
+        book_metadata_default_schema.update(default_dict)
 
-        print(new_book_metadata)
-        new_book_metadata.update(book_metadata)
-        print(new_book_metadata)
+        book_metadata_default_schema.update(book_metadata)
 
-        try:
-            # keys from csv import
-            self.title = book_metadata["title"]
-            self.author = book_metadata["author"]
-            self.isbn = book_metadata["isbn"]
-            self.num_of_pages = book_metadata["number_of_pages"]
-            self.pub_date = book_metadata["publication_date"]
-            self.publishers = book_metadata["publishers"]
-            self.open_lib_work_key = book_metadata["open_lib_key"]
+        book_metadata_default_schema.update(book_metadata)
+        book_metadata = book_metadata_default_schema
 
-        except KeyError:
-            # keys from open lib import
-            self.title = book_metadata["title"]
-            self.author = book_metadata["author"]
-            self.isbn = book_metadata["isbn"]
-            self.num_of_pages = book_metadata["num_of_pages"]
-            self.pub_date = book_metadata["pub_date"]
-            self.publishers = book_metadata["publisher"]
-            self.open_lib_work_key = book_metadata["work_key"]
+        self.id = book_metadata["id"]
+        self.title = book_metadata["title"]
+        self.primary_author_key = book_metadata["primary_author_key"]
+        self.primary_author = book_metadata["primary_author"]
+        self.secondary_authors_keys = book_metadata["secondary_authors_keys"]
+        self.secondary_authors = book_metadata["secondary_authors"]
+        self.isbn_13 = book_metadata["isbn_13"]
+        self.edition_publish_date = book_metadata["edition_publish_date"]
+        self.number_of_pages = book_metadata["number_of_pages"]
+        self.publisher = book_metadata["publisher"]
+        self.open_lib_key = book_metadata["open_lib_key"]
+        self.goodreads_identifier = book_metadata["goodreads_identifier"]
+        self.librarything_identifier = book_metadata["librarything_identifier"]
+        self.date_added = book_metadata["date_added"]
+        self.date_finished = book_metadata["date_finished"]
+        self.comments = book_metadata["comments"]
 
-        try:
-            # if no comments field set to blank
-            # data from the open library won't ever have comments
-            # so this is neccessary for compatability
-            self.comments = book_metadata["comments"]
-        except KeyError:
-            self.comments = ""
-
-        try:
-            self.date_added = book_metadata["date_added"]
-        except KeyError:
-            self.date_added = datestamp
-        try:
-            self.date_finished = book_metadata["date_finished"]
-        except KeyError:
-            self.date_finished = datestamp
-        try:
-            self.id = book_metadata["id"]
-        except KeyError:
-            self.id = ""
-        # keep original book metadata
-        # and org isbn passed
-        # passed for debugging
-        self.book_metadata = book_metadata
-        self.creation_isbn = isbn
+        # these are stored for debugging
+        self.complete_book_metadata = book_metadata
+        self.complete_open_lib_data = book_metadata["complete_open_lib_data"]
 
         logging.debug(self.__repr__())
 
-    def openLibIsbn(isbn):
+    @classmethod
+    def openLibIsbnSearch(cls, isbn: str) -> Dict[str, str]:
         """get data back from open library api via isbn"""
-        # add isbn into url
         url = f"https://openlibrary.org/isbn/{isbn}.json"
+
+        logging.debug("Request url: %s", url)
 
         # get response as json
         response = requests.get(url)
-        response_dict = response.json()
-
-        # get title and edition pub date
-        title = response_dict["title"]
-        pub_date = response_dict["publish_date"]
+        open_lib_data = response.json()
 
         # authors goes via different page
-        authors = response_dict["authors"]
+        authors_open_lib_keys = open_lib_data["authors"]
 
-        if len(authors) == 1:
-            author_key = authors[0]["key"]
+        secondary_authors = ""
+        secondary_authors_keys = ""
+
+        logging.debug(authors_open_lib_keys)
+
+        if len(authors_open_lib_keys) == 1:
+            author_key = authors_open_lib_keys[0]["key"]
             author_url = "https://openlibrary.org" + author_key + ".json"
 
             response = requests.get(author_url)
             response_dict = response.json()
             author = response_dict["name"]
         else:
-            authors = ""
-
-            for count, author in enumerate(authors):
-                author_key = authors[count]["authors"]
+            for count, author in enumerate(authors_open_lib_keys):
+                if count == 0:
+                    continue
+                author_key = authors_open_lib_keys[count]["key"]
 
                 author_url = "https://openlibrary.org" + author_key + ".json"
 
                 response = requests.get(author_url)
                 response_dict = response.json()
-                author = respons_dict["name"]
+                author = response_dict["name"]
 
-                authors = authors + ", " + author
-            # reset numerous authors as one author value
-            author = authors
+                secondary_authors = secondary_authors + ", " + author
+                secondary_authors_keys = secondary_authors_keys + ", " + author_key
 
-        return (title, author, pub_date)
+        # not every title has goodreads / librarything identifiers
+        # so set to blank if they don't exist
+        try:
+            goodreads_identifier = open_lib_data["identifiers"]["goodreads"][0]
+        except KeyError:
+            goodreads_identifier = ""
+        try:
+            librarything_identifier = open_lib_data["identifiers"]["librarything"][0]
+        except KeyError:
+            librarything_identifier = ""
+        try:
+            number_of_pages = open_lib_data["number_of_pages"]
+        except KeyError:
+            number_of_pages = ""
+
+        # values that are indexed on 0 are returned as list
+        # but should only get one result when searching via isbn
+        book_metadata = {
+            "title": open_lib_data["title"],
+            "primary_author_key": authors_open_lib_keys[0]["key"],
+            "primary_author": author,
+            "secondary_authors_keys": secondary_authors_keys,
+            "secondary_authors": secondary_authors,
+            "isbn_13": isbn,
+            "edition_publish_date": open_lib_data["publish_date"],
+            "number_of_pages": number_of_pages,
+            "publisher": open_lib_data["publishers"][0],
+            "open_lib_key": open_lib_data["key"],
+            "goodreads_identifier": goodreads_identifier,
+            "librarything_identifier": librarything_identifier,
+            "complete_open_lib_data": open_lib_data,
+        }
+
+        logging.debug(book_metadata)
+
+        return book_metadata
 
     @classmethod
-    def openLibSearch(cls, isbn: str) -> List[Dict[str, str]]:
+    def OpenLibSearch(cls, isbn: str) -> List[Dict[str, str]]:
         """Get book data using general open library search api."""
         url = "https://openlibrary.org/search.json"
 
@@ -280,49 +324,42 @@ Press enter to skip. Otherwise type comments below:
 
     def __repr__(self):
         """Return a string of the expression that creates the object"""
-        return (
-            f"{self.__class__.__qualname__}({self.creation_isbn}, {self.book_metadata})"
-        )
+        return f"{self.__class__.__qualname__}({self.complete_book_metadata})"
 
     def __str__(self):
         """Return human readable string"""
-        return f"{self.title} by {self.author}, published in {self.pub_date}"
+        return f"{self.title} by {self.primary_author}, edition published in {self.edition_publish_date}"
 
     def __iter__(self):
         """Create iterable of book metadata."""
         return iter(
             [
+                self.id,
                 self.title,
-                self.author,
-                self.isbn,
-                self.num_of_pages,
-                self.pub_date,
-                self.publishers,
-                self.open_lib_work_key,
-                self.comments,
+                self.primary_author_key,
+                self.primary_author,
+                self.secondary_authors_keys,
+                self.secondary_authors,
+                self.isbn_13,
+                self.edition_publish_date,
+                self.number_of_pages,
+                self.publisher,
+                self.open_lib_key,
+                self.goodreads_identifier,
+                self.librarything_identifier,
                 self.date_added,
                 self.date_finished,
+                self.comments,
             ]
         )
 
     def writeToCSV(self):
         """Write object book to csv."""
-        output_filename = self.isbn + ".csv"
+        output_filename = self.isbn_13 + ".csv"
         output_filepath = os.path.join(DATA_FOLDER, output_filename)
         with open(output_filepath, "w") as output:
             writer = csv.writer(output)
-            writer.writerow(
-                [
-                    "title",
-                    "author",
-                    "isbn",
-                    "number_of_pages",
-                    "publication_date",
-                    "publishers",
-                    "open_lib_key",
-                    "comments",
-                ]
-            )
+            writer.writerow(default_header_rows)
             writer.writerow(self)
 
 
@@ -349,7 +386,7 @@ class Bookshelves:
         connection = sqlite3.connect(path_to_database)
         cursor = connection.cursor()
         cursor.execute(
-            "CREATE TABLE bookshelves(id integer primary key autoincrement, title, author, isbn, number_of_pages, publication_date, publishers, open_lib_key, date_added, date_finished, comments)"
+            "CREATE TABLE bookshelves(id integer primary key autoincrement, title, primary_author_key, primary_author, secondary_authors_keys, secondary_authors,isbn_13, edition_publish_date, number_of_pages, publisher, open_lib_key, goodreads_identifier, librarything_identifier, date_added, date_finished, comments)"
         )
         connection.close()
         return path_to_database
@@ -375,18 +412,23 @@ class Bookshelves:
         logging.debug(type(book.comments))
 
         cursor.execute(
-            """INSERT into "bookshelves" (title, author, isbn, number_of_pages, publication_date, publishers, open_lib_key, comments, date_added, date_finished) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            """INSERT into "bookshelves" (title, primary_author_key, primary_author, secondary_authors_keys, secondary_authors,isbn_13, edition_publish_date, number_of_pages, publisher, open_lib_key, goodreads_identifier, librarything_identifier, date_added, date_finished, comments) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 book.title,
-                book.author,
-                book.isbn,
-                book.num_of_pages,
-                book.pub_date,
-                book.publishers,
-                book.open_lib_work_key,
-                book.comments,
+                book.primary_author_key,
+                book.primary_author,
+                book.secondary_authors_keys,
+                book.secondary_authors,
+                book.isbn_13,
+                book.edition_publish_date,
+                book.number_of_pages,
+                book.publisher,
+                book.open_lib_key,
+                book.goodreads_identifier,
+                book.librarything_identifier,
                 book.date_added,
                 book.date_finished,
+                book.comments,
             ),
         )
         connection.commit()
@@ -408,8 +450,6 @@ class Bookshelves:
         else:
             return False
 
-            """INSERT into "bookshelves" (title, author, isbn, number_of_pages, publication_date, publishers, open_lib_key, comments, date_added, date_finished) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-
     def exportToCSV(self, PATH_TO_CSV: str):
         """Export database to csv file."""
         connection, cursor = self.getConnection()
@@ -427,21 +467,7 @@ class Bookshelves:
 
         with open(output_filepath, "w") as output:
             writer = csv.writer(output)
-            writer.writerow(
-                [
-                    "id",
-                    "title",
-                    "author",
-                    "isbn",
-                    "number_of_pages",
-                    "publication_date",
-                    "publishers",
-                    "open_lib_key",
-                    "date_added",
-                    "date_finished",
-                    "comments",
-                ]
-            )
+            writer.writerow(default_header_rows)
             for book in bookshelves:
                 logging.info("Writing %s to csv", book["title"])
                 writer.writerow(book)
@@ -454,19 +480,24 @@ class Bookshelves:
             """If your CSV has the following columns in order,
 then it will be directly imported into the database:
 
-id,
-title,
-author,
-isbn,
-number_of_pages,
-publication_date,
-publishers,
-open_lib_key,
-date_added,
+id
+title
+primary_author_key
+primary_author
+secondary_authors_keys
+secondary_authors
+isbn_13
+edition_publish_date
+number_of_pages
+publisher
+open_lib_key
+goodreads_identifier
+librarything_identifier
+date_added
 date_finished
-comments,
+comments
 
-Otherwise, it must have a column titled isbn.
+Otherwise, it must have a column titled isbn_13.
 And an isbn listed for each title and the book metadata will be fetched from the open library.
 
 Example schema:
@@ -482,19 +513,6 @@ Would you like to continue? y/n: "
         if confirm_user_input(check):
             bookshelves = Bookshelves(PATH_TO_DATABASE)
 
-            columns_list = [
-                "id",
-                "title",
-                "author",
-                "isbn",
-                "number_of_pages",
-                "publication_date",
-                "publishers",
-                "open_lib_key",
-                "date_added",
-                "date_finished",
-                "comments",
-            ]
             fail_count = 0
             success_count = 0
 
@@ -504,7 +522,7 @@ Would you like to continue? y/n: "
                 logging.debug("Headings: %s ", reader.fieldnames)
                 # if headings on csv match default database schema
                 # import directly from csv
-                if reader.fieldnames == columns_list:
+                if reader.fieldnames == default_header_rows:
                     logging.info("Importing data directly from csv file")
 
                     books_metadata = list(reader)
@@ -541,31 +559,51 @@ Would you like to continue? y/n: "
 
                     for row in reader:
                         logging.debug(row)
-                        isbn = row["isbn"]
+                        isbn = row["isbn_13"]
                         logging.debug(isbn)
                         logging.debug(type(isbn))
 
                         if Book.validateISBN(isbn):
-                            results = Book.openLibSearch(isbn)
-
-                            # ignore invalid results
-                            if results is None:
-                                self.writeFailedImportsToFile(row)
+                            try:
+                                book_metadata = Book.openLibIsbnSearch(isbn)
+                            except Exception as e:
+                                logging.critical(
+                                    "Except when fetching data for %s. Error message: %s",
+                                    isbn,
+                                    e,
+                                )
+                                self.writeFailedImportsToFile(row, e)
                                 fail_count += 1
                                 continue
-                            # open library returns results as list of dictionaries
-                            # if searching by isbn you will only get one result
-                            # but you must still access the data via index
-                            book_metadata = results[0]
+
                             logging.debug(book_metadata)
 
-                            book = Book(book_metadata)
+                            book = Book(
+                                default_dict=default_dict, book_metadata=book_metadata
+                            )
                             logging.debug(book)
+
+                            # if spreadsheet includes user defined
+                            # comments and date finished rows
+                            # then update values for book
+                            # before adding to database
+                            try:
+                                comments = row["comments"]
+                                book.comments = comments
+                            except KeyError:
+                                pass
+
+                            try:
+                                date_finished = row["date_finished"]
+                                book.date_finished = date_finished
+                            except KeyError:
+                                pass
 
                             bookshelves.addToDatabase(book)
                             success_count += 1
                         else:
-                            self.writeFailedImportsToFile(row)
+                            error_message = "Invalid ISBN passed"
+                            self.writeFailedImportsToFile(row, error_message)
                             logging.critical("Invalid ISBN passed: %s", isbn)
                             fail_count += 1
                             continue
@@ -574,11 +612,13 @@ Would you like to continue? y/n: "
         else:
             terminate_program()
 
-    def writeFailedImportsToFile(self, row):
+    def writeFailedImportsToFile(self, row, error_message):
         """Used to write failed imports from import csv
         to failed imports file"""
+        nl = "\n"
+        error_message = str(error_message)
         with open("failed-imports.txt", "a+") as output:
-            output.write(dumps(row))
+            output.writelines([error_message, (dumps(row)), nl])
 
     def getTopTenBooks(self):
         """Get top ten most read books in database"""
@@ -695,18 +735,18 @@ def main():
                 logging.info("Assigning user comments from args passed")
                 book.comments = comments
 
-            if date_finished is not None:
+            if date_finished:
                 logging.info("Assigning date finished for book from args passed")
                 book.date_finished = date_finished
 
             if check:
-                logging.info("Writing %s to csv", book.isbn)
+                logging.info("Writing %s to csv", book.isbn_13)
                 book.writeToCSV()
 
                 logging.info("Establishing Bookshelves class")
                 bookshelves = Bookshelves(PATH_TO_DATABASE)
 
-                logging.info("Writing %s to bookshelves", book.isbn)
+                logging.info("Writing %s to bookshelves", book.isbn_13)
                 bookshelves.addToDatabase(book)
         elif args.export:
             logging.info("Establishing bookshelves class")
