@@ -1,4 +1,6 @@
-"""bookshelves is a command line app for keeping track of the books"""
+"""bookshelves is a command line app for keeping track of books
+you have read. It keeps them in a sqlite3 database, which can be
+exported and imported to a csv"""
 import argparse
 import csv
 from datetime import datetime
