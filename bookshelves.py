@@ -357,7 +357,7 @@ Press enter to skip. Otherwise type comments below:
         """Write object book to csv."""
         output_filename = self.isbn_13 + ".csv"
         output_filepath = os.path.join(DATA_FOLDER, output_filename)
-        with open(output_filepath, "w") as output:
+        with open(output_filepath, "w", encoding="utf-8") as output:
             writer = csv.writer(output)
             writer.writerow(default_header_rows)
             writer.writerow(self)
@@ -465,7 +465,7 @@ class Bookshelves:
 
         logging.info("Writing to %s", output_filepath)
 
-        with open(output_filepath, "w") as output:
+        with open(output_filepath, "w", encoding="utf-8") as output:
             writer = csv.writer(output)
             writer.writerow(default_header_rows)
             for book in bookshelves:
@@ -516,7 +516,7 @@ Would you like to continue? y/n: "
             fail_count = 0
             success_count = 0
 
-            with open(import_csv_file, "r", encoding="utf-8-sig") as csv_file:
+            with open(import_csv_file, "r", encoding="utf-8") as csv_file:
                 reader = csv.DictReader(csv_file)
 
                 logging.debug("Headings: %s ", reader.fieldnames)
@@ -617,7 +617,7 @@ Would you like to continue? y/n: "
         to failed imports file"""
         nl = "\n"
         error_message = str(error_message)
-        with open("failed-imports.txt", "a+") as output:
+        with open("data/failed-imports.txt", "a+", encoding="utf-8") as output:
             output.writelines([error_message, (dumps(row)), nl])
 
     def getTopTenBooks(self):
