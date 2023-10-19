@@ -9,7 +9,7 @@ import logging
 import os
 import sqlite3
 import sys
-from typing import Dict, List, Optional, Type
+from typing import Dict, Type
 
 import requests
 
@@ -37,11 +37,7 @@ parser.add_argument(
 class Book:
     """Class for individual book entries"""
 
-    def __init__(
-        self,
-        book_metadata: Optional[Dict[str, str]] = None,
-        isbn: Optional[str] = None,
-    ):
+    def __init__(self, book_metadata: Dict[str, str]):
         """Create new book object from book metadata or from isbn.
         If created via isbn call will be made to open library.
         Book metadata dictionary must be created from either
@@ -51,23 +47,18 @@ class Book:
         passed across from the API call but would have been passed
         across from a csv import."""
         logging.debug("Init for Book class")
-
-        if book_metadata is None and isbn is None:
-            logging.critical("No valid args passed for book object")
-            terminate_program()
-
-        logging.debug("ISBN passed to class: %s", isbn)
         logging.debug("book metadata passed to class: %s", book_metadata)
 
-        if book_metadata is None:
-            if self.validateISBN(isbn) is False:
+        if type(book_metadata) is not dict:
+            result = self.validateISBN(book_metadata)
+            if not result:
                 logging.critical("Invalid ISBN passed")
                 terminate_program()
-
-            # book metadata fetched via isbn will always return one result
-            # but result will always be a list
-            # index 0 gets actual metadata
-            book_metadata = self.openLibIsbnSearch(isbn)
+            else:
+                # book metadata fetched via isbn will always return one result
+                # but result will always be a list
+                # index 0 gets actual metadata
+                book_metadata = self.openLibIsbnSearch(book_metadata)
 
         logging.debug(book_metadata)
 
@@ -78,7 +69,6 @@ class Book:
         book_metadata_default_schema = self.setDefaultDict()
         book_metadata_default_schema.update(book_metadata)
 
-        book_metadata_default_schema.update(book_metadata)
         book_metadata = book_metadata_default_schema
 
         self.id = book_metadata["id"]
@@ -100,7 +90,6 @@ class Book:
 
         # these are stored for debugging
         self.complete_book_metadata = book_metadata
-        self.complete_open_lib_data = book_metadata["complete_open_lib_data"]
 
         logging.debug(self.__repr__())
 
@@ -200,6 +189,7 @@ class Book:
         except KeyError:
             number_of_pages = ""
 
+        logging.debug("complete_open_lib_data: %s", open_lib_data)
         # values that are indexed on 0 are returned as list
         # but should only get one result when searching via isbn
         try:
@@ -216,79 +206,15 @@ class Book:
                 "open_lib_key": open_lib_data["key"],
                 "goodreads_identifier": goodreads_identifier,
                 "librarything_identifier": librarything_identifier,
-                "complete_open_lib_data": open_lib_data,
             }
         except Exception as e:
             logging.critical("Key value not found for %s", isbn, e)
             book_metadata = None
             return book_metadata
-        logging.debug(book_metadata)
+
+        logging.debug("Book_metadata returned: %s", book_metadata)
 
         return book_metadata
-
-    @classmethod
-    def OpenLibSearch(cls, isbn: str) -> List[Dict[str, str]] | None:
-        """Get book data using general open library search api."""
-        url = "https://openlibrary.org/search.json"
-
-        # create url query
-        search_url = url + "?q=" + isbn + "&limit=20"
-
-        response = requests.get(search_url)
-        response_dict = response.json()
-
-        results = []
-        num = 0
-
-        try:
-            # get basic biblographic data
-            work_key = response_dict["docs"][num]["key"]
-            title = response_dict["docs"][num]["title"]
-            author = response_dict["docs"][num]["author_name"]
-
-            # handle multiple authors
-            if len(author) == 1:
-                author = author[0]
-            else:
-                author = ", ".join(author)
-
-            # handle values that caused key errors on rarer books in testing
-
-            num_of_pages = response_dict["docs"][num]["number_of_pages_median"]
-            first_publish_date = response_dict["docs"][num]["first_publish_year"]
-
-            publishers = response_dict["docs"][num]["publisher"]
-
-            # handle multiple publishers
-            if len(publishers) == 1:
-                publishers = publishers[0]
-            else:
-                publishers = ", ".join(publishers)
-
-        except KeyError as e:
-            # if work doesn't have basic biblographic data ignore it
-            logging.critical(f"{e}: invalid book")
-            return None
-        except IndexError as e:
-            logging.critical(f"{e}: Unable to get data")
-            return None
-        except Exception as e:
-            logging.critical(f"{e}: unknown error getting book data")
-            return None
-
-        results.append(
-            {
-                "work_key": work_key,
-                "title": title,
-                "pub_date": first_publish_date,
-                "num_of_pages": num_of_pages,
-                "author": author,
-                "isbn": isbn,
-                "publisher": publishers,
-            }
-        )
-
-        return results
 
     @staticmethod
     def validateISBN(isbn: str) -> bool:
@@ -352,18 +278,6 @@ Press enter to skip. Otherwise type comments below:
             ]
         )
 
-    def writeToCSV(self):
-        """Write object book to csv."""
-        output_filename = self.isbn_13 + ".csv"
-        output_filepath = os.path.join(DATA_FOLDER, output_filename)
-
-        default_header_rows = list(self.setDefaultDict().keys())
-
-        with open(output_filepath, "w", encoding="utf-8") as output:
-            writer = csv.writer(output)
-            writer.writerow(default_header_rows)
-            writer.writerow(self)
-
 
 class Bookshelves:
     """Class for database of books"""
@@ -409,9 +323,6 @@ class Bookshelves:
         """Add a book to the database."""
         logging.info("Inserting %s into %s", book, PATH_TO_DATABASE)
         connection, cursor = self.getConnection()
-
-        logging.debug(book.comments)
-        logging.debug(type(book.comments))
 
         cursor.execute(
             """INSERT into "bookshelves" (title, primary_author_key, primary_author, secondary_authors_keys, secondary_authors,isbn_13, edition_publish_date, number_of_pages, publisher, open_lib_key, goodreads_identifier, librarything_identifier, date_added, date_finished, comments) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
@@ -469,7 +380,7 @@ class Bookshelves:
 
         default_header_rows = list(Book.setDefaultDict().keys())
 
-        with open(output_filepath, "w", encoding="utf-8") as output:
+        with open(output_filepath, "w", encoding="utf-8", newline="") as output:
             writer = csv.writer(output)
             writer.writerow(default_header_rows)
             for book in bookshelves:
@@ -514,10 +425,13 @@ Would you like to continue? y/n: "
             fail_count = 0
             success_count = 0
 
-            with open(import_csv_file, "r", encoding="utf-8") as csv_file:
+            with open(import_csv_file, "r", encoding="utf-8", newline="") as csv_file:
                 reader = csv.DictReader(csv_file)
 
                 logging.debug("Headings: %s ", reader.fieldnames)
+
+                default_header_rows = list(Book.setDefaultDict().keys())
+
                 # if headings on csv match default database schema
                 # import directly from csv
                 if reader.fieldnames == default_header_rows:
@@ -530,7 +444,7 @@ Would you like to continue? y/n: "
 
                     for book_metadata in books_metadata:
                         # must explicitly pass book metadata to book obj
-                        book = Book(book_metadata=book_metadata)
+                        book = Book(book_metadata)
 
                         # check if id in database
                         bookshelves = Bookshelves(PATH_TO_DATABASE)
@@ -576,7 +490,7 @@ Would you like to continue? y/n: "
 
                             logging.debug(book_metadata)
 
-                            book = Book(book_metadata=book_metadata)
+                            book = Book(book_metadata)
                             logging.debug(book)
 
                             # if spreadsheet includes user defined
@@ -617,12 +531,12 @@ Would you like to continue? y/n: "
         row["error_message"] = str(error_message)
 
         if os.path.exists(failed_imports_path) is False:
-            with open(failed_imports_path, "w", encoding="utf-8") as output:
+            with open(failed_imports_path, "w", encoding="utf-8", newline="") as output:
                 writer = csv.DictWriter(output, row.keys())
                 writer.writeheader()
                 writer.writerow(row)
         else:
-            with open(failed_imports_path, "a", encoding="utf-8") as output:
+            with open(failed_imports_path, "a", encoding="utf-8", newline="") as output:
                 writer = csv.DictWriter(output, row.keys())
                 writer.writerow(row)
 
@@ -637,7 +551,7 @@ Would you like to continue? y/n: "
         print("~~~~~~~")
         for row in top_ten:
             count = row[-1]
-            book = Book(book_metadata=row)
+            book = Book(row)
             print(f"{book} has been read {count} times.")
 
     def __repr__(self):
@@ -722,9 +636,7 @@ def main():
 
             logging.info("searching for %s", isbn)
 
-            # must explicitly give isbn
-            # when creating book obj from single isbn
-            book = Book(isbn=isbn)
+            book = Book(isbn)
 
             logging.info(book)
 
@@ -746,9 +658,6 @@ def main():
                 book.date_finished = date_finished
 
             if check:
-                logging.info("Writing %s to csv", book.isbn_13)
-                book.writeToCSV()
-
                 logging.info("Establishing Bookshelves class")
                 bookshelves = Bookshelves(PATH_TO_DATABASE)
 
