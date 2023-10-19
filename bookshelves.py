@@ -219,9 +219,6 @@ class Book:
     @staticmethod
     def validateISBN(isbn: str) -> bool:
         """Test for valid isbn"""
-        logging.debug(isbn)
-        logging.debug(type(isbn))
-
         isbn = isbn.strip()
 
         if isbn.isdigit() is False:
@@ -233,7 +230,6 @@ class Book:
                 return True
             else:
                 logging.info("ISBN is invalid length")
-                logging.debug(len(isbn))
                 return False
 
     def addComments(self):
@@ -363,6 +359,37 @@ class Bookshelves:
         else:
             return False
 
+    def updateValues(self, book: Book):
+        """Update values in database to match import"""
+        logging.info("Updating values for %s in %s", book, PATH_TO_DATABASE)
+        connection, cursor = self.getConnection()
+
+        logging.debug(book.complete_book_metadata)
+
+        cursor.execute(
+            """UPDATE "bookshelves" SET title = ?, primary_author_key = ?, primary_author = ?, secondary_authors_keys = ?, secondary_authors = ?, isbn_13 = ?, edition_publish_date = ?, number_of_pages = ?, publisher = ?, open_lib_key = ?, goodreads_identifier = ?, librarything_identifier = ?, date_added = ?, date_finished = ?, comments = ? WHERE id = ?""",
+            (
+                book.title,
+                book.primary_author_key,
+                book.primary_author,
+                book.secondary_authors_keys,
+                book.secondary_authors,
+                book.isbn_13,
+                book.edition_publish_date,
+                book.number_of_pages,
+                book.publisher,
+                book.open_lib_key,
+                book.goodreads_identifier,
+                book.librarything_identifier,
+                book.date_added,
+                book.date_finished,
+                book.comments,
+                book.id,
+            ),
+        )
+        connection.commit()
+        self.closeDB(connection)
+
     def exportToCSV(self, PATH_TO_CSV: str):
         """Export database to csv file."""
         connection, cursor = self.getConnection()
@@ -449,7 +476,7 @@ Would you like to continue? y/n: "
                         # check if id in database
                         bookshelves = Bookshelves(PATH_TO_DATABASE)
 
-                        result = bookshelves.checkIfIDExists(book_metadata["id"])
+                        result = bookshelves.checkIfIDExists(book.id)
                         logging.debug(result)
                         logging.debug(type(book))
 
@@ -461,6 +488,7 @@ Would you like to continue? y/n: "
                             )
                             # id already exists
                             # do nothing
+                            bookshelves.updateValues(book)
                             continue
                         else:
                             bookshelves.addToDatabase(book)
