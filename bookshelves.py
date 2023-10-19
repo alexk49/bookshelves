@@ -38,26 +38,6 @@ parser.add_argument(
 datestamp = datetime.today().strftime("%Y-%m-%d")
 
 
-default_header_rows = [
-    "id",
-    "title",
-    "primary_author_key",
-    "primary_author",
-    "secondary_authors_keys",
-    "secondary_authors",
-    "isbn_13",
-    "edition_publish_date",
-    "number_of_pages",
-    "publisher",
-    "open_lib_key",
-    "goodreads_identifier",
-    "librarything_identifier",
-    "date_added",
-    "date_finished",
-    "comments",
-]
-
-
 class Book:
     """Class for individual book entries"""
 
@@ -136,6 +116,7 @@ class Book:
         the comments and date finished values which are unique to the user
         and means any missing values default to an empty string."""
         default_dict = {
+            "id": "",
             "title": "",
             "primary_author_key": "",
             "primary_author": "",
@@ -148,11 +129,9 @@ class Book:
             "open_lib_key": "",
             "goodreads_identifier": "",
             "librarything_identifier": "",
-            "complete_open_lib_data": "",
             "date_added": datestamp,
             "date_finished": datestamp,
             "comments": "",
-            "id": "",
         }
 
         book_metadata_default_schema = defaultdict()
@@ -376,6 +355,9 @@ Press enter to skip. Otherwise type comments below:
         """Write object book to csv."""
         output_filename = self.isbn_13 + ".csv"
         output_filepath = os.path.join(DATA_FOLDER, output_filename)
+
+        default_header_rows = list(self.setDefaultDict().keys())
+
         with open(output_filepath, "w", encoding="utf-8") as output:
             writer = csv.writer(output)
             writer.writerow(default_header_rows)
@@ -483,6 +465,8 @@ class Bookshelves:
         output_filepath = os.path.join(DATA_FOLDER, output_filename)
 
         logging.info("Writing to %s", output_filepath)
+
+        default_header_rows = list(Book.setDefaultDict().keys())
 
         with open(output_filepath, "w", encoding="utf-8") as output:
             writer = csv.writer(output)
