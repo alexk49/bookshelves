@@ -14,7 +14,7 @@ from typing import Dict, Type
 import requests
 
 logging.basicConfig(
-    level=logging.DEBUG, format=" %(asctime)s -  %(levelname)s -  %(message)s"
+    level=logging.INFO, format=" %(asctime)s -  %(levelname)s -  %(message)s"
 )
 
 DATA_FOLDER = "data"
@@ -46,9 +46,6 @@ class Book:
         The init method fills out data types that may not have been
         passed across from the API call but would have been passed
         across from a csv import."""
-        logging.debug("Init for Book class")
-        logging.debug("book metadata passed to class: %s", book_metadata)
-
         if type(book_metadata) is not dict:
             result = self.validateISBN(book_metadata)
             if not result:
@@ -59,8 +56,6 @@ class Book:
                 # but result will always be a list
                 # index 0 gets actual metadata
                 book_metadata = self.openLibIsbnSearch(book_metadata)
-
-        logging.debug(book_metadata)
 
         if book_metadata is None:
             logging.critical("No book metadata found")
@@ -149,8 +144,6 @@ class Book:
 
         secondary_authors = ""
         secondary_authors_keys = ""
-
-        logging.debug(authors_open_lib_keys)
 
         if len(authors_open_lib_keys) == 1:
             author_key = authors_open_lib_keys[0]["key"]
@@ -280,7 +273,6 @@ class Bookshelves:
 
     def __init__(self, path_to_database: str):
         """Create new bookshelves database object"""
-        logging.debug("Init for Bookshelves class")
         self.path_to_database = path_to_database
 
         if os.path.exists(path_to_database):
@@ -350,10 +342,9 @@ class Bookshelves:
         query = cursor.execute(
             """SELECT id FROM bookshelves WHERE id = ?""", (id_value,)
         )
-        logging.debug(query)
         # if anything is returned then id exists
         result = query.fetchone()
-        logging.debug(result)
+
         if result:
             return True
         else:
@@ -363,8 +354,6 @@ class Bookshelves:
         """Update values in database to match import"""
         logging.info("Updating values for %s in %s", book, PATH_TO_DATABASE)
         connection, cursor = self.getConnection()
-
-        logging.debug(book.complete_book_metadata)
 
         cursor.execute(
             """UPDATE "bookshelves" SET title = ?, primary_author_key = ?, primary_author = ?, secondary_authors_keys = ?, secondary_authors = ?, isbn_13 = ?, edition_publish_date = ?, number_of_pages = ?, publisher = ?, open_lib_key = ?, goodreads_identifier = ?, librarything_identifier = ?, date_added = ?, date_finished = ?, comments = ? WHERE id = ?""",
@@ -394,9 +383,6 @@ class Bookshelves:
         """Export database to csv file."""
         connection, cursor = self.getConnection()
         bookshelves = cursor.execute("""SELECT * from bookshelves""")
-
-        logging.debug(bookshelves)
-        logging.debug(type(bookshelves))
 
         datestamp = datetime.today().strftime("%Y%m%d")
 
@@ -455,8 +441,6 @@ Would you like to continue? y/n: "
             with open(import_csv_file, "r", encoding="utf-8", newline="") as csv_file:
                 reader = csv.DictReader(csv_file)
 
-                logging.debug("Headings: %s ", reader.fieldnames)
-
                 default_header_rows = list(Book.setDefaultDict().keys())
 
                 # if headings on csv match default database schema
@@ -466,9 +450,6 @@ Would you like to continue? y/n: "
 
                     books_metadata = list(reader)
 
-                    logging.debug(books_metadata)
-                    logging.debug(books_metadata[0]["title"])
-
                     for book_metadata in books_metadata:
                         # must explicitly pass book metadata to book obj
                         book = Book(book_metadata)
@@ -477,8 +458,6 @@ Would you like to continue? y/n: "
                         bookshelves = Bookshelves(PATH_TO_DATABASE)
 
                         result = bookshelves.checkIfIDExists(book.id)
-                        logging.debug(result)
-                        logging.debug(type(book))
 
                         if result:
                             logging.info(
@@ -498,10 +477,7 @@ Would you like to continue? y/n: "
                     logging.info("Getting data from open library")
 
                     for row in reader:
-                        logging.debug(row)
                         isbn = row["isbn_13"]
-                        logging.debug(isbn)
-                        logging.debug(type(isbn))
 
                         if Book.validateISBN(isbn):
                             try:
@@ -516,10 +492,7 @@ Would you like to continue? y/n: "
                                 fail_count += 1
                                 continue
 
-                            logging.debug(book_metadata)
-
                             book = Book(book_metadata)
-                            logging.debug(book)
 
                             # if spreadsheet includes user defined
                             # comments and date finished rows
@@ -634,14 +607,12 @@ def terminate_program():
 
 
 def main():
-    logging.debug(sys.argv)
     if (len(sys.argv)) == 1:
         logging.info("Invalid usage: no args passed\n")
         usage()
         terminate_program()
     else:
         args = parser.parse_args()
-        logging.debug(args)
         if args.add:
             logging.debug(args.add)
 
@@ -699,6 +670,7 @@ def main():
         elif args.import_csv:
             logging.debug(args.import_csv)
             import_csv_filepath = args.import_csv
+
             if os.path.exists(import_csv_filepath) is False:
                 logging.critical("CSV filepath does not exist: %s", import_csv_filepath)
                 terminate_program()
