@@ -33,10 +33,6 @@ parser.add_argument(
     "-t", "--top_ten", action="store_true", help="View top 10 most read books ten books"
 )
 
-# define datestamp to be used for default date values
-# if dates not supplied
-datestamp = datetime.today().strftime("%Y-%m-%d")
-
 
 class Book:
     """Class for individual book entries"""
@@ -115,6 +111,11 @@ class Book:
         book metadata schema. This allows the user to update
         the comments and date finished values which are unique to the user
         and means any missing values default to an empty string."""
+
+        # define datestamp to be used for default date values
+        # if dates are not supplied
+        datestamp = datetime.today().strftime("%Y-%m-%d")
+
         default_dict = {
             "id": "",
             "title": "",
@@ -502,12 +503,6 @@ comments
 
 Otherwise, it must have a column titled isbn_13.
 And an isbn listed for each title and the book metadata will be fetched from the open library.
-
-Example schema:
-
-isbn
-978-etc
-978-etc
 
 Would you like to continue? y/n: "
 """
