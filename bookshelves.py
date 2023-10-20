@@ -218,8 +218,7 @@ class Book:
             logging.critical("ISBN contains characters that aren't numbers")
             return False
         else:
-            length = len(isbn)
-            if length == 10 or length == 13:
+            if len(isbn) == 13:
                 return True
             else:
                 logging.info("ISBN is invalid length")
