@@ -1,3 +1,4 @@
+"""Tests for book class methods"""
 import unittest
 from unittest import mock
 from datetime import datetime
@@ -6,7 +7,10 @@ from bookshelves import Book
 
 
 class TestBookClass(unittest.TestCase):
-    """This is used to test the Book Class and all its methods."""
+    """This is used to test the Book Class and all its methods.
+    The isbn used for testing is:
+    9780747579885 - Jonathan Strange and Mr Norrel
+    """
 
     def setUp(self):
         """
@@ -32,6 +36,7 @@ class TestBookClass(unittest.TestCase):
         }
 
     def test_book_init(self):
+        """Test init Book class"""
         datestamp = datetime.today().strftime("%Y-%m-%d")
 
         book = Book(self.test_book_metadata)
@@ -67,8 +72,28 @@ class TestBookClass(unittest.TestCase):
         self.assertEqual(book.date_finished, datestamp)
         self.assertEqual(book.comments, "")
 
+    def test_default_dict(self):
+        default_dict = Book.setDefaultDict()
+        self.assertEqual("", default_dict["id"])
+        self.assertEqual("", default_dict["comments"])
+
+        datestamp = datetime.today().strftime("%Y-%m-%d")
+
+        self.assertEqual(datestamp, default_dict["date_added"])
+
+    def test_valid_isbn(self):
+        valid_isbn = "9780747579885"
+        self.assertTrue(Book.validateISBN(valid_isbn))
+
+    def test_invalid_isbn(self):
+        self.assertFalse(Book.validateISBN("jafgl"))
+
+    def test_isbn_10(self):
+        self.assertFalse(Book.validateISBN("0747579881"))
+
     @mock.patch("bookshelves.input", create=True)
-    def testAddComments(self, mocked_input):
+    def test_AddComments(self, mocked_input):
+        """Testing adding comments to book object"""
         book = Book(self.test_book_metadata)
         mocked_input.side_effect = ["test comment"]
         book.addComments()
