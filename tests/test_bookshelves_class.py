@@ -129,11 +129,11 @@ class TestBookshelvesClass(unittest.TestCase):
         with open(path_to_csv, "r", encoding="utf-8", newline="") as file:
             reader = csv.DictReader(file)
 
-            print("checking headers match expected schema")
+            print("testing headers match expected schema")
             self.assertEqual(self.db_headers, reader.fieldnames)
 
             target_row = 1
-
+            print("testing rows have updated correctly")
             for num, row in enumerate(reader):
                 if num == target_row:
                     self.assertEqual(row["id"], self.test_book.id)
