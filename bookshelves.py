@@ -610,8 +610,6 @@ def main():
     else:
         args = parser.parse_args()
         if args.add:
-            logging.debug(args.add)
-
             isbn = None
             date_finished = None
             comments = None
@@ -626,7 +624,6 @@ def main():
 
             if isbn is None:
                 logging.critical("No valid ISBN passed for adding book to database")
-                logging.debug(args.add)
                 terminate_program()
 
             logging.info("searching for %s", isbn)
@@ -664,7 +661,6 @@ def main():
 
             bookshelves.exportToCSV()
         elif args.import_csv:
-            logging.debug(args.import_csv)
             import_csv_filepath = args.import_csv
 
             if os.path.exists(import_csv_filepath) is False:
@@ -673,8 +669,6 @@ def main():
 
             bookshelves.importFromCSV(import_csv_filepath)
         elif args.top_ten:
-            logging.debug(args.top_ten)
-
             bookshelves = Bookshelves(PATH_TO_DATABASE)
 
             bookshelves.getTopTenBooks()
