@@ -14,13 +14,12 @@ from typing import Dict, Type
 import requests
 
 logging.basicConfig(
-    level=logging.INFO, format=" %(asctime)s -  %(levelname)s -  %(message)s"
+    level=logging.DEBUG, format=" %(asctime)s -  %(levelname)s -  %(message)s"
 )
 
 DATA_FOLDER = "data"
 
 PATH_TO_DATABASE = os.path.join(DATA_FOLDER, "bookshelves.db")
-PATH_TO_CSV = os.path.join(DATA_FOLDER, "bookshelves.csv")
 
 parser = argparse.ArgumentParser()
 
@@ -85,6 +84,8 @@ class Book:
 
         # these are stored for debugging
         self.complete_book_metadata = book_metadata
+
+        logging.debug("Book init, complete metadata: %s", self.complete_book_metadata)
 
         logging.debug(self.__repr__())
 
@@ -351,7 +352,8 @@ class Bookshelves:
 
     def updateValues(self, book: Book):
         """Update values in database to match import"""
-        logging.info("Updating values for %s in %s", book, PATH_TO_DATABASE)
+        logging.info("Updating values for %s in %s", book, self.db)
+        logging.debug("New values for book: %s", book.complete_book_metadata)
         connection, cursor = self.getConnection()
 
         cursor.execute(
@@ -378,15 +380,17 @@ class Bookshelves:
         connection.commit()
         self.closeDB(connection)
 
-    def exportToCSV(self, PATH_TO_CSV: str):
+    def exportToCSV(self, path_to_csv: str = ""):
         """Export database to csv file."""
+        if path_to_csv == "":
+            datestamp = datetime.today().strftime("%Y%m%d")
+            output_filename = "bookshelves-" + datestamp + ".csv"
+            output_filepath = os.path.join(DATA_FOLDER, output_filename)
+        else:
+            output_filepath = path_to_csv
+
         connection, cursor = self.getConnection()
         bookshelves = cursor.execute("""SELECT * from bookshelves""")
-
-        datestamp = datetime.today().strftime("%Y%m%d")
-
-        output_filename = "bookshelves-" + datestamp + ".csv"
-        output_filepath = os.path.join(DATA_FOLDER, output_filename)
 
         logging.info("Writing to %s", output_filepath)
 
@@ -432,8 +436,6 @@ Would you like to continue? y/n: "
         )
 
         if confirm_user_input(check):
-            bookshelves = Bookshelves(PATH_TO_DATABASE)
-
             fail_count = 0
             success_count = 0
 
@@ -453,10 +455,7 @@ Would you like to continue? y/n: "
                         # must explicitly pass book metadata to book obj
                         book = Book(book_metadata)
 
-                        # check if id in database
-                        bookshelves = Bookshelves(PATH_TO_DATABASE)
-
-                        result = bookshelves.checkIfIDExists(book.id)
+                        result = self.checkIfIDExists(book.id)
 
                         if result:
                             logging.info(
@@ -465,11 +464,9 @@ Would you like to continue? y/n: "
                                 book_metadata["id"],
                             )
                             # id already exists
-                            # do nothing
-                            bookshelves.updateValues(book)
-                            continue
+                            self.updateValues(book)
                         else:
-                            bookshelves.addToDatabase(book)
+                            self.addToDatabase(book)
                             success_count += 1
 
                 else:
@@ -509,7 +506,7 @@ Would you like to continue? y/n: "
                             except KeyError:
                                 pass
 
-                            bookshelves.addToDatabase(book)
+                            self.addToDatabase(book)
                             success_count += 1
                         else:
                             error_message = "Invalid ISBN passed"
@@ -665,7 +662,7 @@ def main():
             logging.info("Establishing bookshelves class")
             bookshelves = Bookshelves(PATH_TO_DATABASE)
 
-            bookshelves.exportToCSV(PATH_TO_CSV)
+            bookshelves.exportToCSV()
         elif args.import_csv:
             logging.debug(args.import_csv)
             import_csv_filepath = args.import_csv
@@ -673,8 +670,6 @@ def main():
             if os.path.exists(import_csv_filepath) is False:
                 logging.critical("CSV filepath does not exist: %s", import_csv_filepath)
                 terminate_program()
-
-            bookshelves = Bookshelves(PATH_TO_DATABASE)
 
             bookshelves.importFromCSV(import_csv_filepath)
         elif args.top_ten:
