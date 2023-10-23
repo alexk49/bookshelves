@@ -82,3 +82,11 @@ python bookshelves.py -t
 ```
 
 As a book can be read and thus added to the database multiple times, this returns a count of your top ten most read titles, with the count being performed on the title value in the database.
+
+## Tests
+
+All tests have been written with the standard python unittest module. These can be run with the makefile, and can also be set to run before every commit via the pre-commit script in the hooks directory. You can modify your hooksPath with:
+
+```
+git config core.hooksPath hooks
+```
