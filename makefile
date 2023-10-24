@@ -11,9 +11,6 @@ clean:
 	# make clean
 	rm -rf __pycache__
 	rm -rf .venv
-dist: .venv/bin/activate
-	# convert to .exe for distribution
-	pyinstaller --onefile real-code.py
 .venv/bin/activate: requirements.txt
 	# build venv
 	# update venv if requirements is changed
